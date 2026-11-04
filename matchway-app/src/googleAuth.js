@@ -1,13 +1,38 @@
-import * as WebBrowser from 'expo-web-browser';
-import Constants from 'expo-constants';
+import { Linking, AppState } from 'react-native';
 import { supabase } from './supabase';
 
-WebBrowser.maybeCompleteAuthSession();
+// Must match the intent-filter in android/app/src/main/AndroidManifest.xml
+// and be listed under Supabase > Authentication > URL Configuration > Redirect URLs.
+const REDIRECT_TO = 'matchway://auth-callback';
 
-function makeRedirectTo() {
-  const host = Constants.expoConfig && Constants.expoConfig.hostUri;
-  if (host) return 'exp://' + host + '/--/auth-callback';
-  return 'matchway://auth-callback';
+// Opens the browser and waits for matchway://auth-callback to come back.
+// Resolves with the returned URL, or null if the user came back without finishing.
+function waitForCallback(url) {
+  return new Promise((resolve) => {
+    let done = false;
+    let timer = null;
+    const finish = (value) => {
+      if (done) return;
+      done = true;
+      if (timer) clearTimeout(timer);
+      linkSub.remove();
+      appSub.remove();
+      resolve(value);
+    };
+    const linkSub = Linking.addEventListener('url', ({ url: u }) => {
+      if (u && u.startsWith(REDIRECT_TO)) finish(u);
+    });
+    let left = false;
+    const appSub = AppState.addEventListener('change', (state) => {
+      if (state !== 'active') {
+        left = true;
+      } else if (left) {
+        // Back in the app: give the deep link a moment to arrive, else treat as cancelled.
+        timer = setTimeout(() => finish(null), 1500);
+      }
+    });
+    Linking.openURL(url).catch(() => finish(null));
+  });
 }
 
 function parseAuthUrl(url) {
@@ -28,15 +53,14 @@ function parseAuthUrl(url) {
 
 // Returns true when signed in, false when the user cancelled. Throws on errors.
 export async function signInWithGoogle() {
-  const redirectTo = makeRedirectTo();
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider: 'google',
-    options: { redirectTo, skipBrowserRedirect: true, queryParams: { prompt: 'select_account' } },
+    options: { redirectTo: REDIRECT_TO, skipBrowserRedirect: true, queryParams: { prompt: 'select_account' } },
   });
   if (error) throw error;
-  const result = await WebBrowser.openAuthSessionAsync(data.url, redirectTo);
-  if (result.type !== 'success') return false;
-  const p = parseAuthUrl(result.url);
+  const returnedUrl = await waitForCallback(data.url);
+  if (!returnedUrl) return false;
+  const p = parseAuthUrl(returnedUrl);
   if (p.error_description) throw new Error(p.error_description);
   if (p.code) {
     const { error: e1 } = await supabase.auth.exchangeCodeForSession(p.code);

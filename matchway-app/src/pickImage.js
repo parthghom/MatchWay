@@ -1,20 +1,29 @@
-import * as ImagePicker from 'expo-image-picker';
+import { launchCamera, launchImageLibrary } from 'react-native-image-picker';
 
 // source: 'camera' or 'gallery'; front: true for selfies.
 // Returns { uri, base64 } or null if the user cancelled.
 export async function pickImage(source, front) {
-  const options = { mediaTypes: ['images'], quality: 0.4, base64: true, exif: false };
+  const options = {
+    mediaType: 'photo',
+    quality: 0.4,
+    includeBase64: true,
+    includeExtra: false,
+    selectionLimit: 1,
+  };
   if (source === 'camera') {
-    const perm = await ImagePicker.requestCameraPermissionsAsync();
-    if (!perm.granted) throw new Error('Camera permission is needed. Allow it in your phone settings.');
-    if (front) options.cameraType = ImagePicker.CameraType.front;
-    const res = await ImagePicker.launchCameraAsync(options);
-    if (res.canceled) return null;
-    return { uri: res.assets[0].uri, base64: res.assets[0].base64 };
+    options.cameraType = front ? 'front' : 'back';
   }
-  const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-  if (!perm.granted) throw new Error('Photo permission is needed. Allow it in your phone settings.');
-  const res = await ImagePicker.launchImageLibraryAsync(options);
-  if (res.canceled) return null;
-  return { uri: res.assets[0].uri, base64: res.assets[0].base64 };
+  const res = source === 'camera' ? await launchCamera(options) : await launchImageLibrary(options);
+  if (res.didCancel) return null;
+  if (res.errorCode === 'permission') {
+    throw new Error(
+      source === 'camera'
+        ? 'Camera permission is needed. Allow it in your phone settings.'
+        : 'Photo permission is needed. Allow it in your phone settings.'
+    );
+  }
+  if (res.errorCode) throw new Error(res.errorMessage || 'Could not open the picker.');
+  const asset = res.assets && res.assets[0];
+  if (!asset) return null;
+  return { uri: asset.uri, base64: asset.base64 };
 }

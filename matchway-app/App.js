@@ -65,6 +65,16 @@ export default function App() {
     fetchProfile();
   }, [session, role]);
 
+  const refreshProfile = async () => {
+    if (!session) return;
+    try {
+      const res = await api.get('/profile/me');
+      setProfile(res.data);
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
   const onSignOut = async () => {
     await supabase.auth.signOut();
     await AsyncStorage.removeItem('matchway_role');
@@ -121,11 +131,11 @@ export default function App() {
     const nextStep = profile.next_step;
     if (nextStep === 'done') {
       if (role === 'student') {
-        return profile.status === 'approved'
+        return profile.profile?.status === 'approved'
           ? <RideFlow onSignOut={onSignOut} />
-          : <StatusScreen title="Under review" message="Your documents are being checked." onSignOut={onSignOut} onRefresh={() => {}} />;
+          : <StatusScreen title="Under review" message="Your documents are being checked." onSignOut={onSignOut} onRefresh={refreshProfile} />;
       } else {
-        return <StatusScreen title="You are all set" message="The driver home is coming soon." onSignOut={onSignOut} onRefresh={() => {}} />;
+        return <StatusScreen title="You are all set" message="The driver home is coming soon." onSignOut={onSignOut} onRefresh={refreshProfile} />;
       }
     }
 
