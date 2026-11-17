@@ -84,6 +84,27 @@ class DriverDispatcher:
         self.drivers.put(best_driver_id, driver)
         return driver
 
+    def count_nearby(self, lat, lon, vehicle_type, start_m=2000, step_m=1000, max_m=10000):
+        """Counts free drivers of this vehicle type around a point.
+        Looks within 2 km first; if there are none it widens by 1 km at a time,
+        up to 10 km. Returns (count, radius_m that was used)."""
+        kd_tree = KDTree()
+        for d_id in self.drivers.keys():
+            d = self.drivers.get(d_id)
+            if not d.is_busy and d.vehicle_type == vehicle_type:
+                kd_tree.insert(d.latitude, d.longitude, d_id)
+
+        if kd_tree.size() == 0:
+            return 0, max_m
+
+        radius = start_m
+        while radius <= max_m:
+            found = kd_tree.radius_search(lat, lon, radius)
+            if len(found) > 0:
+                return len(found), radius
+            radius += step_m
+        return 0, max_m
+
     def release_driver(self, driver_id):
         """Marks a driver as available."""
         if self.drivers.contains(driver_id):

@@ -115,3 +115,15 @@ def test_random_spots_brute_force():
             best_id = sid
 
     assert kd_id == best_id
+
+
+def test_all_spots_and_college_seed():
+    from app.engine.virtual_spots import VirtualSpotService
+    from app.data.pune_spots import seed_spots, PUNE_COLLEGE_SPOTS
+    service = VirtualSpotService()
+    assert seed_spots(service) == len(PUNE_COLLEGE_SPOTS)
+    assert seed_spots(service) == 0                      # second run adds nothing
+    names = [s.name for s in service.all_spots()]
+    assert len(names) == len(PUNE_COLLEGE_SPOTS)
+    assert all(n.startswith("Matchway Spot - ") for n in names)
+    assert service.nearest_spot(18.5293, 73.8566).spot.spot_id == "pune_coep"

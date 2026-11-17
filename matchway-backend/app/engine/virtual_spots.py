@@ -55,5 +55,8 @@ class VirtualSpotService:
 
         return suggestions
 
+    def all_spots(self):
+        return [self._spots.get(spot_id) for spot_id in self._spots.keys()]
+
     def size(self):
         return self._spots.size()

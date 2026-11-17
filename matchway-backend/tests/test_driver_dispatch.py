@@ -108,3 +108,24 @@ if __name__ == "__main__":
     test_dispatch_none_available()
     test_dispatch_release()
     print("All tests passed!")
+
+
+def test_count_nearby_widens_range():
+    dispatcher = DriverDispatcher()
+    lat, lon = 18.5204, 73.8567
+    # one cab about 4.4 km away, one busy cab right here, one free bike right here
+    dispatcher.update_driver(Driver(id="far", name="F", vehicle_type="cab", latitude=lat + 0.04, longitude=lon))
+    dispatcher.update_driver(Driver(id="busy", name="B", vehicle_type="cab", is_busy=True, latitude=lat, longitude=lon))
+    dispatcher.update_driver(Driver(id="bike", name="K", vehicle_type="bike", latitude=lat, longitude=lon))
+
+    count, radius = dispatcher.count_nearby(lat, lon, "cab")
+    assert count == 1 and radius == 5000          # first found at the 5 km step
+    assert dispatcher.count_nearby(lat, lon, "bike") == (1, 2000)
+
+
+def test_count_nearby_none_within_10km():
+    dispatcher = DriverDispatcher()
+    lat, lon = 18.5204, 73.8567
+    dispatcher.update_driver(Driver(id="gone", name="G", vehicle_type="auto", latitude=lat + 0.2, longitude=lon))
+    assert dispatcher.count_nearby(lat, lon, "auto") == (0, 10000)
+    assert dispatcher.count_nearby(lat, lon, "cab") == (0, 10000)   # no cab drivers at all

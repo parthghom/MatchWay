@@ -3,6 +3,8 @@
 # The API key stays on the server; the app only talks to our own endpoints.
 # decode_polyline turns Ola's compressed route string into [lat, lon] points:
 # each number is stored as a 5-bit chunk difference from the previous point.
+# fetch_map_file lets the app's map view load Ola tiles/styles through our
+# server, so the Ola key never has to be put inside the phone app.
 import json
 import os
 import urllib.parse
@@ -36,6 +38,38 @@ def _http_post(url, headers=None):
         raise RuntimeError(f"HTTP request failed: {e}")
 
 
+# Only the map-drawing files may be fetched through the proxy (not search/routing).
+MAP_PATHS = ("tiles/", "fonts/", "glyphs/", "sprites/", "styles/")
+
+
+def fetch_map_file(path, query="", http_get_bytes=None):
+    """Fetches one map file (style, tile, font, sprite) from Ola, adding our key.
+    Returns (bytes, content_type, content_encoding or None)."""
+    key = _api_key()
+    if ".." in path or not path.startswith(MAP_PATHS):
+        raise ValueError("That map file is not allowed")
+    http_get_bytes = http_get_bytes or _http_get_bytes
+    # drop any api_key the caller sent, then add ours
+    pairs = [(k, v) for k, v in urllib.parse.parse_qsl(query) if k != "api_key"]
+    pairs.append(("api_key", key))
+    # font names contain spaces ("Gentona Medium"), so the path must be encoded
+    url = f"{BASE}/{urllib.parse.quote(path)}?" + urllib.parse.urlencode(pairs)
+    return http_get_bytes(url)
+
+
+def _http_get_bytes(url):
+    req = urllib.request.Request(url, method="GET", headers={"X-Request-Id": "matchway-map"})
+    try:
+        with urllib.request.urlopen(req, timeout=10) as response:
+            return (
+                response.read(),
+                response.headers.get("Content-Type", "application/octet-stream"),
+                response.headers.get("Content-Encoding"),  # tiles often come gzipped
+            )
+    except Exception as e:
+        raise RuntimeError(f"HTTP request failed: {e}")
+
+
 def parse_predictions(data):
     """Turns an Ola autocomplete response into a short list for the app."""
     out = []
@@ -48,16 +82,21 @@ def parse_predictions(data):
             "address": p.get("description") or "",
             "lat": loc.get("lat"),
             "lon": loc.get("lng"),
+            # Ola sends the distance from the "location" we gave when it knows it
+            "distance_m": p.get("distance_meters"),
         })
     return out
 
 
-def search_places(text, lat=None, lon=None, http_get=None):
+def search_places(text, lat=None, lon=None, http_get=None, radius_m=50000):
     key = _api_key()
     http_get = http_get or _http_get
     params = {"input": text, "api_key": key}
     if lat is not None and lon is not None:
+        # only places within radius_m (50 km) of the rider
         params["location"] = f"{lat},{lon}"
+        params["radius"] = radius_m
+        params["strictbounds"] = "true"
     url = f"{BASE}/places/v1/autocomplete?" + urllib.parse.urlencode(params)
     return parse_predictions(http_get(url, {"X-Request-Id": "matchway-search"}))
 

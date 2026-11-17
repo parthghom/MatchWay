@@ -8,6 +8,14 @@ No Expo. Open the `android/` folder in Android Studio and press Run.
 3. Edit `src/config.js`: set `SUPABASE_URL` and `SUPABASE_ANON_KEY`.
 4. In Supabase > Authentication > URL Configuration > Redirect URLs, add `matchway://auth-callback`.
 
+## Ride booking map
+The booking screen uses Ola Maps. Set `OLA_MAPS_API_KEY` in the backend `.env`
+(the key stays on the server; the app's map loads tiles through `/maps/ola/...`).
+After pulling these changes run `npm install` and rebuild the app once
+(`npm run android`), because `react-native-webview` and
+`@react-native-community/geolocation` contain native code. On an emulator,
+set a location in the emulator's Extended controls > Location.
+
 ## Run
 1. Backend: `cd matchway-backend && pip install -r requirements.txt && uvicorn app.main:app --host 0.0.0.0 --port 8000`
 2. Metro: `cd matchway-app && npm start`

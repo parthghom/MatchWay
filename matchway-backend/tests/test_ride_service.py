@@ -127,3 +127,31 @@ def test_ride_service_errors():
     # Confirm twice
     with pytest.raises(ValueError):
         service.confirm_ride(res.room_id)
+
+
+def test_cancel_request_leaves_room_and_matching():
+    dispatcher = DriverDispatcher()
+    service = RideService(dispatcher)
+    r1 = Rider(id="r1", name="A", gender="male", preference="mix")
+    req1 = RideRequest(id="q1", rider_id="r1", flow="campus_to_destination", destination="Mall", vehicle_type="cab", time_window_start=100, time_window_end=200)
+    r2 = Rider(id="r2", name="B", gender="male", preference="mix")
+    req2 = RideRequest(id="q2", rider_id="r2", flow="campus_to_destination", destination="Mall", vehicle_type="cab", time_window_start=120, time_window_end=220)
+    service.request_ride(r1, req1, ["S1", "S2"], 12.0, 77.0, 10.0)
+    service.cancel_request("r1")
+
+    res2 = service.request_ride(r2, req2, ["S1", "S2"], 12.0, 77.0, 10.0)
+    assert "r1" not in res2.matches                     # cancelled rider no longer matches
+    with pytest.raises(KeyError):
+        service.cancel_request("r1")                    # already cancelled
+
+
+def test_cancel_request_not_allowed_after_driver_assigned():
+    dispatcher = DriverDispatcher()
+    dispatcher.update_driver(Driver(id="d1", name="D", vehicle_type="cab", latitude=12.0, longitude=77.0))
+    service = RideService(dispatcher)
+    r1 = Rider(id="r1", name="A", gender="male", preference="mix")
+    req1 = RideRequest(id="q1", rider_id="r1", flow="campus_to_destination", destination="Mall", vehicle_type="cab", time_window_start=100, time_window_end=200)
+    res = service.request_ride(r1, req1, ["S1", "S2"], 12.0, 77.0, 10.0)
+    assert service.confirm_ride(res.room_id) is not None
+    with pytest.raises(ValueError):
+        service.cancel_request("r1")

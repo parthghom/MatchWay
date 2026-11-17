@@ -85,6 +85,21 @@ class RideService:
 
         return RequestResult(room.room_id, filtered_matches, fare_range)
 
+    def cancel_request(self, rider_id):
+        """Takes a rider out of matching and out of their room (before a driver is assigned)."""
+        if not self.riders.contains(rider_id):
+            raise KeyError(f"Rider {rider_id} has no request")
+        record = self.riders.get(rider_id)
+
+        for room_id in self.rooms_by_id.keys():
+            room = self.rooms_by_id.get(room_id)
+            if rider_id in room.rider_ids() and self.ride_of_room.contains(room_id):
+                raise ValueError("A driver is already assigned, so this ride can no longer be cancelled here")
+
+        self.engine.unregister(rider_id)
+        self.room_manager.remove(rider_id, record.request)
+        self.riders.remove(rider_id)
+
     def confirm_ride(self, room_id):
         if not self.rooms_by_id.contains(room_id):
             raise KeyError(f"Room {room_id} not found")

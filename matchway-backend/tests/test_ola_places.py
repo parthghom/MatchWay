@@ -24,7 +24,7 @@ def test_parse_predictions():
         "geometry": {"location": {"lat": 18.5, "lng": 73.8}},
     }, {"place_id": "p2", "description": "Station Road, Pune"}]}
     out = parse_predictions(data)
-    assert out[0] == {"place_id": "p1", "name": "City Mall", "address": "City Mall, Pune, Maharashtra", "lat": 18.5, "lon": 73.8}
+    assert out[0] == {"place_id": "p1", "name": "City Mall", "address": "City Mall, Pune, Maharashtra", "lat": 18.5, "lon": 73.8, "distance_m": None}
     assert out[1]["name"] == "Station Road" and out[1]["lat"] is None
     assert parse_predictions({}) == []
 
@@ -76,3 +76,61 @@ def test_api_route(monkeypatch):
     monkeypatch.setattr(ola_places, "route_line", lambda *a: {"km": 1.0, "minutes": 2.0, "points": [[1, 2]]})
     r = TestClient(app).get("/maps/route", params={"origin_lat": 1, "origin_lon": 2, "dest_lat": 3, "dest_lon": 4})
     assert r.status_code == 200 and r.json()["km"] == 1.0
+
+
+def test_search_places_limits_to_50km(monkeypatch):
+    monkeypatch.setenv("OLA_MAPS_API_KEY", "k")
+    seen = {}
+
+    def fake_get(url, headers):
+        seen["url"] = url
+        return {"predictions": []}
+
+    ola_places.search_places("mall", 18.7, 73.3, http_get=fake_get)
+    assert "radius=50000" in seen["url"] and "strictbounds=true" in seen["url"]
+
+
+def test_fetch_map_file_adds_our_key_only(monkeypatch):
+    monkeypatch.setenv("OLA_MAPS_API_KEY", "ours")
+    seen = {}
+
+    def fake_get(url):
+        seen["url"] = url
+        return b"tile", "application/x-protobuf"
+
+    body, ctype = ola_places.fetch_map_file("tiles/vector/v1/data/x/1/2/3.pbf", "api_key=theirs&a=1", http_get_bytes=fake_get)
+    assert body == b"tile" and ctype == "application/x-protobuf"
+    assert "api_key=ours" in seen["url"] and "theirs" not in seen["url"] and "a=1" in seen["url"]
+
+
+def test_fetch_map_file_blocks_other_apis(monkeypatch):
+    monkeypatch.setenv("OLA_MAPS_API_KEY", "k")
+    for bad in ("places/v1/autocomplete", "routing/v1/directions", "tiles/../places/v1/details"):
+        with pytest.raises(ValueError):
+            ola_places.fetch_map_file(bad, "")
+
+
+def test_map_proxy_route(monkeypatch):
+    monkeypatch.setenv("OLA_MAPS_API_KEY", "k")
+    monkeypatch.setattr(ola_places, "_http_get_bytes", lambda url: (b"{}", "application/json"))
+    client = TestClient(app)
+    ok = client.get("/maps/ola/tiles/vector/v1/styles/default-dark-standard/style.json")
+    assert ok.status_code == 200 and ok.content == b"{}"
+    assert client.get("/maps/ola/places/v1/autocomplete").status_code == 400
+
+
+def test_fetch_map_file_encodes_spaces_in_font_names(monkeypatch):
+    monkeypatch.setenv("OLA_MAPS_API_KEY", "k")
+    seen = {}
+
+    def fake_get(url):
+        seen["url"] = url
+        return b"f", "application/x-protobuf"
+
+    ola_places.fetch_map_file("tiles/vector/v1/fonts/Gentona Semi Bold,Noto Sans Bold/0-255.pbf", "", http_get_bytes=fake_get)
+    assert " " not in seen["url"] and "Gentona%20Semi%20Bold%2CNoto%20Sans%20Bold" in seen["url"]
+
+
+def test_parse_predictions_keeps_distance():
+    data = {"predictions": [{"place_id": "p1", "description": "A, Pune", "distance_meters": 2100}]}
+    assert parse_predictions(data)[0]["distance_m"] == 2100

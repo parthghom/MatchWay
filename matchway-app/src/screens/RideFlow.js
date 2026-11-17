@@ -4,6 +4,9 @@ import {
   StyleSheet, Alert, StatusBar, ActivityIndicator,
 } from 'react-native';
 import { api } from '../api';
+import WaitingScreen from './ride/WaitingScreen';
+import MainTabs from './ride/MainTabs';
+import { saveRideToHistory } from '../history';
 
 
 const C = {
@@ -35,21 +38,6 @@ function Btn({ title, onPress, ghost, disabled, loading }) {
   );
 }
 
-function Choice({ options, value, onChange }) {
-  return (
-    <View style={s.row}>
-      {options.map((o) => (
-        <TouchableOpacity
-          key={o}
-          onPress={() => onChange(o)}
-          style={[s.chip, value === o && s.chipOn]}
-        >
-          <Text style={[s.chipText, value === o && s.chipTextOn]}>{o}</Text>
-        </TouchableOpacity>
-      ))}
-    </View>
-  );
-}
 
 function Field({ label, ...props }) {
   return (
@@ -74,16 +62,15 @@ function Stepper({ index }) {
   );
 }
 
-export default function RideFlow({ onSignOut }) {
+export default function RideFlow({ profile, email, onSignOut }) {
   const [step, setStep] = useState('request');
   const [busy, setBusy] = useState(false);
 
-  const [name, setName] = useState('');
-  const [gender, setGender] = useState('female');
+  // name and gender come from the profile made during sign-up
+  const name = profile?.profile?.full_name || 'Rider';
+  const gender = profile?.profile?.gender === 'male' ? 'male' : 'female';
   const [vehicle, setVehicle] = useState('cab');
-  const [sameOnly, setSameOnly] = useState(false);
-  const [destination, setDestination] = useState('');
-  const [km, setKm] = useState('5');
+  const [trip, setTrip] = useState(null);   // { pickup, drop } of the booked ride
 
   const [riderId, setRiderId] = useState('');
   const [result, setResult] = useState(null);
@@ -98,42 +85,37 @@ export default function RideFlow({ onSignOut }) {
     try { await fn(); } catch (e) { Alert.alert('Error', errorText(e)); } finally { setBusy(false); }
   }
 
-  const addDemoDriver = () => run(async () => {
-    await api.post('/drivers', {
-      id: 'd' + Date.now(), name: 'Demo Driver', vehicle_type: vehicle,
-      is_busy: false, latitude: 18.7603, longitude: 73.3814,
-    });
-    Alert.alert('Done', 'A demo ' + vehicle + ' driver was added near the campus.');
-  });
-
-  const requestRide = () => run(async () => {
-    if (!destination.trim()) throw new Error('Enter a destination');
-    const kmNum = parseFloat(km);
-    if (isNaN(kmNum) || kmNum <= 0) throw new Error('Enter the distance in km');
+  const requestRide = ({ vehicle: vehicleType, sameOnly, pickup: from, drop, km }) => run(async () => {
     const id = 'r' + Date.now();
     const res = await api.post('/rides/request', {
       rider: {
-        id, name: name.trim() || 'Rider', gender,
+        id, name, gender,
         preference: sameOnly ? (gender === 'male' ? 'male_only' : 'female_only') : 'mix',
       },
       request: {
         id: 'q' + id, rider_id: id, flow: 'campus_to_destination',
-        destination: destination.trim(), vehicle_type: vehicle,
+        destination: drop.name, vehicle_type: vehicleType,
         time_window_start: 600, time_window_end: 660,
       },
-      route: ['Campus Gate', 'Station Road', destination.trim()],
-      pickup_lat: 18.7603, pickup_lon: 73.3814, km: kmNum,
+      route: [from.name, drop.name],
+      pickup_lat: from.lat, pickup_lon: from.lon, km,
     });
+    setVehicle(vehicleType); setTrip({ pickup: from, drop, km });
     setRiderId(id); setResult(res.data); setStep('matched');
   });
 
   const confirmRide = () => run(async () => {
     const res = await api.post('/rides/confirm', { room_id: result.room_id });
     if (!res.data.confirmed) {
-      Alert.alert('No driver', res.data.message + '. Go back and tap "Add demo driver".');
+      Alert.alert('No driver', res.data.message + '. Try again in a moment.');
       return;
     }
     setRide(res.data); setStarted(false); setOtp(''); setStep('ride');
+  });
+
+  const cancelRide = () => run(async () => {
+    await api.post('/rides/cancel', { rider_id: riderId });
+    reset();
   });
 
   const startRide = () => run(async () => {
@@ -144,6 +126,14 @@ export default function RideFlow({ onSignOut }) {
   const completeRide = () => run(async () => {
     const res = await api.post('/rides/complete', { ride_id: ride.ride_id });
     setPayments(res.data.payments); setRating(0); setStep('done');
+    // remember it for the History tab
+    if (trip) {
+      saveRideToHistory({
+        id: ride.ride_id, pickup: trip.pickup.name, drop: trip.drop.name, vehicle: ride.vehicle_type || vehicle,
+        fare: ride.exact_share, km: trip.km, riders: ride.rider_ids ? ride.rider_ids.length : 1,
+        date: new Date().toISOString(),
+      });
+    }
   });
 
   const review = (stars) => run(async () => {
@@ -154,60 +144,49 @@ export default function RideFlow({ onSignOut }) {
   });
 
   function reset() {
-    setStep('request'); setResult(null); setRide(null);
+    setStep('request'); setResult(null); setRide(null); setTrip(null);
     setPayments([]); setRating(0); setStarted(false); setOtp('');
   }
 
   const index = { request: 0, matched: 1, ride: 2, done: 3 }[step];
+
+  if (step === 'request') {
+    return (
+      <MainTabs
+        gender={gender}
+        busy={busy}
+        onBook={requestRide}
+        profile={profile}
+        email={email}
+        onSignOut={onSignOut}
+      />
+    );
+  }
+
+  if (step === 'matched' && result && trip) {
+    return (
+      <>
+        <StatusBar barStyle="light-content" backgroundColor={C.bg} />
+        <WaitingScreen
+          pickup={trip.pickup}
+          drop={trip.drop}
+          vehicle={vehicle}
+          fareLow={result.fare_low}
+          fareHigh={result.fare_high}
+          busy={busy}
+          onCancel={cancelRide}
+        />
+      </>
+    );
+  }
 
   return (
     <SafeAreaView style={s.screen}>
       <StatusBar barStyle="light-content" backgroundColor={C.bg} />
       <ScrollView contentContainerStyle={s.body} keyboardShouldPersistTaps="handled">
         <Text style={s.logo}>Match<Text style={{ color: C.yellow }}>Way</Text></Text>
-        <View style={s.topRight}>
-          <TouchableOpacity onPress={onSignOut}>
-            <Text style={s.signOut}>Sign out</Text>
-          </TouchableOpacity>
-        </View>
         <Text style={s.tag}>Share rides. Split fares.</Text>
         <Stepper index={index} />
-
-        {step === 'request' && (
-          <View>
-            <Text style={s.h2}>Where to?</Text>
-            <View style={s.card}>
-              <Field label="Your name" value={name} onChangeText={setName} placeholder="Asha" />
-              <Text style={s.label}>Gender</Text>
-              <Choice options={['female', 'male']} value={gender} onChange={setGender} />
-              <Text style={s.label}>Vehicle</Text>
-              <Choice options={['cab', 'auto', 'bike']} value={vehicle} onChange={setVehicle} />
-              <Text style={s.label}>Share only with the same gender?</Text>
-              <Choice options={['No', 'Yes']} value={sameOnly ? 'Yes' : 'No'} onChange={(v) => setSameOnly(v === 'Yes')} />
-              <Field label="Destination" value={destination} onChangeText={setDestination} placeholder="City Mall" />
-              <Field label="Distance (km)" value={km} onChangeText={setKm} keyboardType="numeric" />
-            </View>
-            <Btn title="Find my ride" onPress={requestRide} loading={busy} />
-            <Btn title="Add demo driver" onPress={addDemoDriver} ghost disabled={busy} />
-          </View>
-        )}
-
-        {step === 'matched' && result && (
-          <View>
-            <Text style={s.h2}>You are in a virtual room</Text>
-            <View style={s.card}>
-              <Text style={s.mute}>Room</Text>
-              <Text style={s.big}>{result.room_id}</Text>
-              <Text style={[s.mute, { marginTop: 14 }]}>Compatible co-riders</Text>
-              <Text style={s.value}>{result.matches.length ? result.matches.join(', ') : 'None yet'}</Text>
-              <Text style={[s.mute, { marginTop: 14 }]}>Your fare range</Text>
-              <Text style={s.fare}>₹{result.fare_low} to ₹{result.fare_high}</Text>
-              <Text style={s.hint}>The more riders join, the lower your fare.</Text>
-            </View>
-            <Btn title="Confirm and find a driver" onPress={confirmRide} loading={busy} />
-            <Btn title="Back" onPress={reset} ghost disabled={busy} />
-          </View>
-        )}
 
         {step === 'ride' && ride && (
           <View>

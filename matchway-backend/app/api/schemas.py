@@ -34,6 +34,9 @@ class RideRequestResponse(BaseModel):
 class ConfirmRequest(BaseModel):
     room_id: str
 
+class CancelRequest(BaseModel):
+    rider_id: str
+
 class ConfirmResponse(BaseModel):
     confirmed: bool
     ride_id: Optional[str] = None

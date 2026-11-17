@@ -47,3 +47,15 @@ def test_fare_split_payment():
 
     total = sum(amount for _, amount in splits)
     assert total == 190.0
+
+
+def test_fare_options_endpoint():
+    from fastapi.testclient import TestClient
+    from app.main import app
+    res = TestClient(app).get("/fare/options", params={"km": 10})
+    assert res.status_code == 200
+    by = {o["vehicle_type"]: o for o in res.json()}
+    assert set(by) == {"bike", "auto", "cab"}
+    assert by["bike"]["full_fare"] == 90.0 and by["bike"]["capacity"] == 1
+    assert by["cab"]["fare_low"] < by["cab"]["fare_high"] == by["cab"]["full_fare"]
+    assert TestClient(app).get("/fare/options", params={"km": -1}).status_code == 400

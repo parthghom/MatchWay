@@ -2,12 +2,13 @@ from fastapi import APIRouter, HTTPException
 from app import state
 from app.api.schemas import (
     SpotRequest, SpotResponse, RideRequestPayload, RideRequestResponse,
-    ConfirmRequest, ConfirmResponse, StartRideRequest, StartRideResponse,
+    ConfirmRequest, CancelRequest, ConfirmResponse, StartRideRequest, StartRideResponse,
     CompleteRideRequest, CompleteRideResponse, ReviewRequest, ReviewResponse,
     VerifyEmailRequest, VerifyImageRequest, VerifySelfieRequest, VerifyResponse, UserVerifyStatus, FareEstimateResponse
 )
 from app.models.driver import Driver
-from app.engine.fare import distance_km, approximate_fare_range
+from app.engine.fare import distance_km, approximate_fare_range, vehicle_fare
+from app.models.constants import VEHICLE_CAPACITY
 
 import base64
 import datetime
@@ -36,6 +37,21 @@ async def list_drivers():
         d = state.current.dispatcher.drivers.get(d_id)
         drivers.append(d)
     return drivers
+
+@router.get("/drivers/nearby")
+async def drivers_nearby(lat: float, lon: float, vehicle_type: str):
+    """How many free drivers are around a point: 2 km first, then +1 km up to 10 km."""
+    if vehicle_type not in ("cab", "auto", "bike"):
+        raise HTTPException(status_code=400, detail="vehicle_type must be cab, auto or bike")
+    count, radius_m = state.current.dispatcher.count_nearby(lat, lon, vehicle_type)
+    return {"count": count, "radius_km": radius_m // 1000}
+
+@router.get("/spots")
+async def list_spots():
+    return [
+        {"spot_id": s.spot_id, "name": s.name, "latitude": s.latitude, "longitude": s.longitude}
+        for s in state.current.spots.all_spots()
+    ]
 
 @router.post("/spots")
 async def create_spot(spot: SpotRequest):
@@ -84,6 +100,16 @@ async def request_ride(payload: RideRequestPayload):
             "fare_low": result.fare_range[0],
             "fare_high": result.fare_range[1]
         }
+    except KeyError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@router.post("/rides/cancel")
+async def cancel_ride(payload: CancelRequest):
+    try:
+        state.current.rides.cancel_request(payload.rider_id)
+        return {"cancelled": True}
     except KeyError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except ValueError as e:
@@ -291,3 +317,21 @@ async def estimate_fare(
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/fare/options")
+async def fare_options(km: float):
+    """Fare for every vehicle over `km`: solo price and the shared range."""
+    if km < 0:
+        raise HTTPException(status_code=400, detail="Distance cannot be negative")
+    out = []
+    for vehicle in ("bike", "auto", "cab"):
+        low, high = approximate_fare_range(vehicle, km, 1)
+        out.append({
+            "vehicle_type": vehicle,
+            "capacity": VEHICLE_CAPACITY[vehicle],
+            "full_fare": vehicle_fare(vehicle, km),
+            "fare_low": low,
+            "fare_high": high,
+        })
+    return out

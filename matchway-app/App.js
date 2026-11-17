@@ -132,7 +132,7 @@ export default function App() {
     if (nextStep === 'done') {
       if (role === 'student') {
         return profile.profile?.status === 'approved'
-          ? <RideFlow onSignOut={onSignOut} />
+          ? <RideFlow onSignOut={onSignOut} profile={profile} email={session?.user?.email} />
           : <StatusScreen title="Under review" message="Your documents are being checked." onSignOut={onSignOut} onRefresh={refreshProfile} />;
       } else {
         return <StatusScreen title="You are all set" message="The driver home is coming soon." onSignOut={onSignOut} onRefresh={refreshProfile} />;

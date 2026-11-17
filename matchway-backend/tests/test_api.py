@@ -195,3 +195,18 @@ def test_unknown_ride_review():
         "ride_id": "unknown", "reviewer_id": "r1", "target_id": "r2", "stars": 5
     })
     assert response.status_code == 404
+
+
+def test_drivers_nearby_spots_and_cancel_api():
+    from fastapi.testclient import TestClient
+    from app.main import app
+    client = TestClient(app)
+    client.post("/drivers", json={"id": "dn1", "name": "N", "vehicle_type": "auto", "latitude": 18.5204, "longitude": 73.8567})
+    res = client.get("/drivers/nearby", params={"lat": 18.5204, "lon": 73.8567, "vehicle_type": "auto"})
+    assert res.status_code == 200 and res.json() == {"count": 1, "radius_km": 2}
+    assert client.get("/drivers/nearby", params={"lat": 1, "lon": 1, "vehicle_type": "plane"}).status_code == 400
+
+    client.post("/spots", json={"spot_id": "sx", "name": "Matchway Spot - X", "latitude": 18.5, "longitude": 73.8})
+    assert any(s["spot_id"] == "sx" for s in client.get("/spots").json())
+
+    assert client.post("/rides/cancel", json={"rider_id": "nobody"}).status_code == 404

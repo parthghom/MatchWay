@@ -8,12 +8,14 @@
   },
   "dependencies": {
     "@react-native-async-storage/async-storage": "2.2.0",
+    "@react-native-community/geolocation": "^3.0.0",
     "@supabase/supabase-js": "^2.118.0",
     "axios": "^1.20.0",
     "react": "19.3.0",
     "react-native": "0.88.0",
     "react-native-image-picker": "^8.3.0",
-    "react-native-url-polyfill": "^4.0.0"
+    "react-native-url-polyfill": "^4.0.0",
+    "react-native-webview": "^13.0.0"
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",

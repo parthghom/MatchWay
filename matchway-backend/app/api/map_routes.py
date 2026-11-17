@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request, Response
 from app.services import ola_places
 
 router = APIRouter(prefix="/maps")
@@ -42,5 +42,18 @@ async def reverse(lat: float, lon: float):
 async def route(origin_lat: float, origin_lon: float, dest_lat: float, dest_lon: float):
     try:
         return ola_places.route_line(origin_lat, origin_lon, dest_lat, dest_lon)
+    except Exception as e:
+        raise _fail(e)
+
+
+@router.get("/ola/{path:path}")
+async def ola_map_file(path: str, request: Request):
+    """The map view in the app loads its style, tiles and fonts from here."""
+    try:
+        body, content_type, *rest = ola_places.fetch_map_file(path, request.url.query)
+        headers = {"Cache-Control": "public, max-age=86400"}
+        if rest and rest[0]:
+            headers["Content-Encoding"] = rest[0]
+        return Response(content=body, media_type=content_type, headers=headers)
     except Exception as e:
         raise _fail(e)
