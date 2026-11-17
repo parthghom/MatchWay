@@ -65,22 +65,27 @@ export default function DocumentScreen({
         ))}
       </View>
 
+      {needsNumber && (
+        <View style={s.numberWrap}>
+          <Field
+            label={numberLabel}
+            value={number}
+            onChangeText={(v) => setNumber(numberCapitalize ? v.toUpperCase() : v)}
+            placeholder={numberPlaceholder}
+            autoCapitalize={numberCapitalize ? 'characters' : 'none'}
+            autoCorrect={false}
+          />
+        </View>
+      )}
+
       <Btn title="Take photo" onPress={() => handlePick('camera')} />
       <Btn title="Choose from gallery" variant="ghost" onPress={() => handlePick('gallery')} />
 
-      {needsNumber && (
-        <Field
-          label={numberLabel}
-          value={number}
-          onChangeText={setNumber}
-          placeholder={numberPlaceholder}
-          autoCapitalize={numberCapitalize ? 'characters' : 'none'}
-        />
-      )}
-
       {error ? <Text style={s.error}>{error}</Text> : null}
       {loading ? <ActivityIndicator color={C.yellow} style={s.loader} /> : (
-        <Btn title="Upload and continue" onPress={handleSubmit} disabled={!canSubmit} />
+        <View style={needsNumber ? s.submitWrap : null}>
+          <Btn title="Upload and continue" onPress={handleSubmit} disabled={!canSubmit} />
+        </View>
       )}
     </ScrollView>
   );
@@ -107,4 +112,6 @@ const s = StyleSheet.create({
   tip: { color: C.muted, fontSize: 14, marginBottom: 4 },
   error: { color: '#FF4444', fontSize: 14, marginBottom: 12, marginTop: 4 },
   loader: { marginVertical: 16 },
+  numberWrap: { marginTop: 4, marginBottom: 12 },
+  submitWrap: { marginBottom: 24 },
 });
