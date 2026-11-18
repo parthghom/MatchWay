@@ -11,7 +11,14 @@ Geolocation.setRNConfiguration({ skipPermissionRequests: true, authorizationLeve
 export function useDriverLocation() {
   const [coords, setCoords] = useState(null);
   const [status, setStatus] = useState('loading');
-  const [debug, setDebug] = useState('build 3: starting...');
+  const [debug, setDebug] = useState('b4: starting...');
+
+  // the hidden WebView (see LocationProbe) reports its position through these two
+  const feed = (lat, lon) => {
+    setCoords({ lat, lon });
+    setStatus('ok');
+  };
+  const note = (msg) => setDebug((d) => `b4, ${msg}`);
 
   useEffect(() => {
     let alive = true;
@@ -37,28 +44,28 @@ export function useDriverLocation() {
       });
       Geolocation.getCurrentPosition(
         got,
-        (e) => { if (alive && !have) setDebug(`build 3, try ${tries} (${provider}): code ${e && e.code} ${(e && e.message) || ''}`); },
+        (e) => { if (alive && !have) setDebug(`b4, try ${tries} (${provider}): code ${e && e.code} ${(e && e.message) || ''}`); },
         { enableHighAccuracy: false, timeout: 10000, maximumAge: 120000 }
       );
     };
 
     async function start() {
       if (Platform.OS === 'android') {
-        setDebug('build 3: asking for permission...');
+        setDebug('b4: asking for permission...');
         const res = await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION);
         if (res !== PermissionsAndroid.RESULTS.GRANTED) {
           if (alive) setStatus('denied');
           return;
         }
       }
-      setDebug('build 3: permission ok, asking the phone for your position...');
+      setDebug('b4: permission ok, asking the phone for your position...');
       quick();
       retry = setInterval(() => { if (!have) quick(); }, 12000);
       watchId = Geolocation.watchPosition(
         got,
         (err) => {
           if (!alive || have) return;
-          setDebug(`build 3, watch: code ${err && err.code} ${(err && err.message) || ''}`);
+          setDebug(`b4, watch: code ${err && err.code} ${(err && err.message) || ''}`);
           setStatus(err && err.code === 1 ? 'denied' : 'error');
         },
         { enableHighAccuracy: true, distanceFilter: 10, interval: 5000, fastestInterval: 3000 }
@@ -74,5 +81,5 @@ export function useDriverLocation() {
     };
   }, []);
 
-  return { coords, status, debug };
+  return { coords, status, debug, feed, note };
 }

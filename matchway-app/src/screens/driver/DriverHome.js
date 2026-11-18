@@ -4,6 +4,7 @@ import React, { useRef } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, Linking, StatusBar } from 'react-native';
 import { C } from '../../theme';
 import { useDriverLocation } from './useDriverLocation';
+import LocationProbe from './LocationProbe';
 import OlaMap from '../../components/OlaMap';
 import { TargetIcon, ProfileIcon } from '../../components/icons';
 
@@ -11,12 +12,13 @@ const HEADER_H = 100;
 export const VEHICLE_ICON = { bike: '🏍️', auto: '🛺', cab: '🚕' };
 
 export default function DriverHome({ vehicleType, onProfile, visible = true }) {
-  const { coords: user, status, debug } = useDriverLocation();
+  const { coords: user, status, debug, feed, note } = useDriverLocation();
   const mapRef = useRef(null);
 
   return (
     <View style={s.screen}>
       <StatusBar barStyle="light-content" backgroundColor={C.bg} />
+      <LocationProbe onFix={feed} onNote={note} />
 
       <OlaMap
         ref={mapRef}
@@ -29,7 +31,7 @@ export default function DriverHome({ vehicleType, onProfile, visible = true }) {
           <View style={s.pill}>
             {status === 'loading' && <ActivityIndicator color={C.yellow} size="small" style={{ marginRight: 8 }} />}
             <Text style={s.pillText}>
-              {status === 'denied' ? 'Location is off' : status === 'error' ? 'Could not find you' : 'Trying to find where you are…'}
+              {status === 'denied' ? 'Location is off' : status === 'error' ? 'Could not find you' : 'Trying to find where you are… (b4)'}
             </Text>
             {status === 'denied' && (
               <TouchableOpacity onPress={() => Linking.openSettings()}>
@@ -72,7 +74,7 @@ const s = StyleSheet.create({
     position: 'absolute', bottom: 16, alignSelf: 'center', flexDirection: 'row', alignItems: 'center',
     backgroundColor: C.card, borderRadius: 24, borderWidth: 1, borderColor: C.line, paddingVertical: 10, paddingHorizontal: 18,
   },
-  debug: { position: 'absolute', bottom: 66, left: 16, right: 16, textAlign: 'center', color: C.muted, fontSize: 12 },
+  debug: { position: 'absolute', bottom: 66, left: 16, right: 16, textAlign: 'center', color: '#DDDDDD', fontSize: 12 },
   pillText: { color: C.text, fontSize: 14 },
   pillLink: { color: C.yellow, fontWeight: '700', fontSize: 14 },
   locate: {
