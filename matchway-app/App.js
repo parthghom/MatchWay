@@ -8,6 +8,7 @@ import RoleSelectScreen from './src/screens/RoleSelectScreen';
 import LoginScreen from './src/screens/LoginScreen';
 import StatusScreen from './src/screens/StatusScreen';
 import RideFlow from './src/screens/RideFlow';
+import DriverTabs from './src/screens/driver/DriverTabs';
 import OnboardingRouter from './src/screens/onboarding/OnboardingRouter';
 
 
@@ -135,7 +136,7 @@ export default function App() {
           ? <RideFlow onSignOut={onSignOut} profile={profile} email={session?.user?.email} />
           : <StatusScreen title="Under review" message="Your documents are being checked." onSignOut={onSignOut} onRefresh={refreshProfile} />;
       } else {
-        return <StatusScreen title="You are all set" message="The driver home is coming soon." onSignOut={onSignOut} onRefresh={refreshProfile} />;
+        return <DriverTabs profile={profile} email={session?.user?.email} onSignOut={onSignOut} />;
       }
     }
 

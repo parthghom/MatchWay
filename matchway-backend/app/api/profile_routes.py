@@ -81,6 +81,20 @@ async def get_avatar(user_id: str, user: AuthUser = Depends(get_current_user)):
     media = "image/png" if data.startswith(b"\x89PNG") else "image/jpeg"
     return Response(content=data, media_type=media, headers={"Cache-Control": "private, max-age=3600"})
 
+@router.get("/profile/document/{doc_type}")
+async def get_my_document(doc_type: str, user: AuthUser = Depends(get_current_user)):
+    """The signed-in user's own uploaded photo, so the profile page can show it."""
+    profile = state.current.profiles.get_profile(user.id)
+    if not profile:
+        raise HTTPException(status_code=404, detail="Profile not found")
+    if doc_type not in onboarding.docs_for_role(profile["role"]):
+        raise HTTPException(status_code=400, detail="This document is not needed for your role")
+    data = state.current.profiles.get_document_image(user.id, doc_type)
+    if not data:
+        raise HTTPException(status_code=404, detail="No photo")
+    media = "image/png" if data.startswith(b"\x89PNG") else "image/jpeg"
+    return Response(content=data, media_type=media, headers={"Cache-Control": "private, max-age=300"})
+
 @router.post("/profile/role")
 async def set_role(role: str = Body(..., embed=True), user: AuthUser = Depends(get_current_user)):
     if role not in ["student", "driver"]:

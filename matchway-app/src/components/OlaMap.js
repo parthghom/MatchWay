@@ -24,6 +24,8 @@ export function buildHtml(api) {
   .you { width: 18px; height: 18px; border-radius: 9px; background: #FFC800; border: 3px solid #fff;
          box-shadow: 0 0 0 0 rgba(255,200,0,.55); animation: pulse 2s infinite; }
   @keyframes pulse { 70% { box-shadow: 0 0 0 16px rgba(255,200,0,0); } 100% { box-shadow: 0 0 0 0 rgba(255,200,0,0); } }
+  .veh { width: 44px; height: 44px; border-radius: 22px; background: #0B0B0B; border: 2px solid #FFC800;
+         font-size: 26px; line-height: 40px; text-align: center; box-shadow: 0 0 0 0 rgba(255,200,0,.55); animation: pulse 2s infinite; }
   .pickup { width: 16px; height: 16px; border-radius: 8px; background: #fff; border: 4px solid #FFC800; }
   .spot { position: relative; width: 24px; height: 24px; border-radius: 7px; background: #FFC800; color: #0B0B0B;
           border: 2px solid #0B0B0B; box-shadow: 0 0 0 2px #FFC800; font: 800 13px/20px sans-serif; text-align: center; }
@@ -57,7 +59,11 @@ export function buildHtml(api) {
   function run(c) {
     if (c.t === 'user') {
       if (userMarker) userMarker.setLngLat(lngLat(c));
-      else userMarker = new maplibregl.Marker({ element: dot('you') }).setLngLat(lngLat(c)).addTo(map);
+      else {
+        var uel = dot(c.icon ? 'veh' : 'you');
+        if (c.icon) uel.textContent = c.icon;
+        userMarker = new maplibregl.Marker({ element: uel }).setLngLat(lngLat(c)).addTo(map);
+      }
     } else if (c.t === 'fly') {
       map.easeTo({ center: [c.lon, c.lat], zoom: c.zoom || map.getZoom(), duration: c.instant ? 0 : 700 });
     } else if (c.t === 'markers') {
@@ -135,7 +141,7 @@ export function buildHtml(api) {
 }
 
 const OlaMap = forwardRef(function OlaMap(
-  { user, route, pickup, drop, spots, visible = true, fitPad, onMoved, onMoveStart, style, children },
+  { user, userIcon, route, pickup, drop, spots, visible = true, fitPad, onMoved, onMoveStart, style, children },
   ref
 ) {
   const web = useRef(null);
@@ -155,12 +161,12 @@ const OlaMap = forwardRef(function OlaMap(
   // keep the blue/yellow "you are here" dot on the live GPS position
   useEffect(() => {
     if (!user) return;
-    cmd({ t: 'user', lat: user.lat, lon: user.lon });
+    cmd({ t: 'user', lat: user.lat, lon: user.lon, icon: userIcon });
     if (!centered.current) {
       centered.current = true;
       cmd({ t: 'fly', lat: user.lat, lon: user.lon, zoom: 15, instant: true });
     }
-  }, [user, cmd]);
+  }, [user, userIcon, cmd]);
 
   useEffect(() => {
     cmd({ t: 'markers', pickup: pickup || null, drop: drop || null });
@@ -186,7 +192,7 @@ const OlaMap = forwardRef(function OlaMap(
       loaded.current = true;
       setFailed(false);
       // the page may have loaded after the first props: send them again
-      if (user) cmd({ t: 'user', lat: user.lat, lon: user.lon });
+      if (user) cmd({ t: 'user', lat: user.lat, lon: user.lon, icon: userIcon });
       cmd({ t: 'markers', pickup: pickup || null, drop: drop || null });
       cmd({ t: 'route', points: route || null, fit: !!route, pad: fitPad });
       cmd({ t: 'spots', list: spots || [] });

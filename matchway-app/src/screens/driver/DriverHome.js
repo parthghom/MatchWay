@@ -1,0 +1,80 @@
+// Driver home: MatchWay on the left, profile button on the right, and the live map.
+// The driver is shown on the map as an emoji of his own vehicle (cab, auto or bike).
+import React, { useRef } from 'react';
+import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, Linking, StatusBar } from 'react-native';
+import { C } from '../../theme';
+import { useLocation } from '../../location';
+import OlaMap from '../../components/OlaMap';
+import { TargetIcon, ProfileIcon } from '../../components/icons';
+
+const HEADER_H = 100;
+export const VEHICLE_ICON = { bike: '🏍️', auto: '🛺', cab: '🚕' };
+
+export default function DriverHome({ vehicleType, onProfile, visible = true }) {
+  const { coords: user, status } = useLocation();
+  const mapRef = useRef(null);
+
+  return (
+    <View style={s.screen}>
+      <StatusBar barStyle="light-content" backgroundColor={C.bg} />
+
+      <OlaMap
+        ref={mapRef}
+        user={user}
+        userIcon={VEHICLE_ICON[vehicleType]}
+        visible={visible}
+        style={s.map}
+      >
+        {!user && (
+          <View style={s.pill}>
+            {status === 'loading' && <ActivityIndicator color={C.yellow} size="small" style={{ marginRight: 8 }} />}
+            <Text style={s.pillText}>
+              {status === 'denied' ? 'Location is off' : status === 'error' ? 'Could not find you' : 'Trying to find where you are…'}
+            </Text>
+            {status === 'denied' && (
+              <TouchableOpacity onPress={() => Linking.openSettings()}>
+                <Text style={s.pillLink}>  Turn on</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        )}
+        <TouchableOpacity
+          style={s.locate}
+          onPress={() => user && mapRef.current && mapRef.current.flyTo(user.lat, user.lon, 16)}
+        >
+          <TargetIcon />
+        </TouchableOpacity>
+      </OlaMap>
+
+      <View style={s.header}>
+        <View style={s.headerRow}>
+          <Text style={s.logo}>Match<Text style={{ color: C.yellow }}>Way</Text></Text>
+          <TouchableOpacity style={s.profileBtn} onPress={onProfile} activeOpacity={0.8}>
+            <ProfileIcon size={22} />
+          </TouchableOpacity>
+        </View>
+      </View>
+    </View>
+  );
+}
+
+const s = StyleSheet.create({
+  screen: { flex: 1, backgroundColor: C.bg },
+  map: { position: 'absolute', top: HEADER_H, bottom: 0, left: 0, right: 0 },
+
+  header: { position: 'absolute', top: 0, left: 0, right: 0, height: HEADER_H, backgroundColor: C.bg, paddingTop: 52, paddingHorizontal: 16 },
+  headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  logo: { fontSize: 22, fontWeight: '800', color: C.text, letterSpacing: 0.5 },
+  profileBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: C.card, borderWidth: 1.5, borderColor: C.yellow, alignItems: 'center', justifyContent: 'center' },
+
+  pill: {
+    position: 'absolute', bottom: 16, alignSelf: 'center', flexDirection: 'row', alignItems: 'center',
+    backgroundColor: C.card, borderRadius: 24, borderWidth: 1, borderColor: C.line, paddingVertical: 10, paddingHorizontal: 18,
+  },
+  pillText: { color: C.text, fontSize: 14 },
+  pillLink: { color: C.yellow, fontWeight: '700', fontSize: 14 },
+  locate: {
+    position: 'absolute', right: 14, bottom: 14, width: 44, height: 44, borderRadius: 22,
+    backgroundColor: C.card, borderWidth: 1, borderColor: C.line, alignItems: 'center', justifyContent: 'center',
+  },
+});

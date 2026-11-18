@@ -62,14 +62,14 @@ class StartRideResponse(BaseModel):
 class CompleteRideRequest(BaseModel):
     ride_id: str
 
+class Payment(BaseModel):
+    rider_id: str
+    amount: float
+
 class CompleteRideResponse(BaseModel):
     ride_id: str
     status: str
     payments: List[Payment]
-
-class Payment(BaseModel):
-    rider_id: str
-    amount: float
 
 class ReviewRequest(BaseModel):
     ride_id: str
