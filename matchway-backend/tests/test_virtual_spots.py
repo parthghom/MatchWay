@@ -125,5 +125,5 @@ def test_all_spots_and_college_seed():
     assert seed_spots(service) == 0                      # second run adds nothing
     names = [s.name for s in service.all_spots()]
     assert len(names) == len(PUNE_COLLEGE_SPOTS)
-    assert all(n.startswith("Matchway Spot - ") for n in names)
+    assert "COEP Technological University" in names
     assert service.nearest_spot(18.5293, 73.8566).spot.spot_id == "pune_coep"

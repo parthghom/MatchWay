@@ -47,10 +47,11 @@ export default function BookRide({ gender, busy, onBook, onProfile, onStage, vis
   const [customPickup, setCustomPickup] = useState(null);   // pickup the rider fixed on the map
   const [pickTarget, setPickTarget] = useState('drop');         // map picking for 'drop' or 'pickup'
   const [askPref, setAskPref] = useState(false);   // second sheet: who to share with
-  const [pref, setPref] = useState('mix');           // 'same' = own gender only, 'mix' = both
+  const [pref, setPref] = useState('same');          // 'same' = own gender only (default), 'mix' = both
 
   const [center, setCenter] = useState(null);   // map centre while picking
   const [centerAddr, setCenterAddr] = useState('');
+  const [centerLabel, setCenterLabel] = useState('');   // building / "Near ..." name for the pin
   const [moving, setMoving] = useState(false);
   const geoSeq = useRef(0);
 
@@ -65,7 +66,7 @@ export default function BookRide({ gender, busy, onBook, onProfile, onStage, vis
   }, []);
 
   const goHome = useCallback(() => {
-    setAskPref(false); setPref('mix');
+    setAskPref(false); setPref('same');
     setStage('home'); setDrop(null); setInfo(null); setFares([]); setPickup(null);
   }, []);
 
@@ -105,7 +106,7 @@ export default function BookRide({ gender, busy, onBook, onProfile, onStage, vis
     setPickTarget(target);
     const start = target === 'pickup' && customPickup ? customPickup : user;
     setCenter(start ? { lat: start.lat, lon: start.lon } : null);
-    setCenterAddr('');
+    setCenterAddr(''); setCenterLabel('');
     setStage('pick');
     if (start) mapRef.current && mapRef.current.flyTo(start.lat, start.lon, 16);
   }
@@ -114,11 +115,15 @@ export default function BookRide({ gender, busy, onBook, onProfile, onStage, vis
     setMoving(false);
     if (stage !== 'pick') return;
     setCenter(c);
-    setCenterAddr('');
+    setCenterAddr(''); setCenterLabel('');
     const mine = ++geoSeq.current;
     api.get('/maps/reverse', { params: { lat: c.lat, lon: c.lon } })
-      .then((res) => { if (mine === geoSeq.current) setCenterAddr(res.data.address || ''); })
-      .catch(() => { if (mine === geoSeq.current) setCenterAddr(''); });
+      .then((res) => {
+        if (mine !== geoSeq.current) return;
+        setCenterAddr(res.data.address || '');
+        setCenterLabel(res.data.label || '');
+      })
+      .catch(() => { if (mine === geoSeq.current) { setCenterAddr(''); setCenterLabel(''); } });
   }, [stage]);
 
   const pickDistance = center && user ? distanceKm(user.lat, user.lon, center.lat, center.lon) : 0;
@@ -126,7 +131,7 @@ export default function BookRide({ gender, busy, onBook, onProfile, onStage, vis
 
   function confirmPick() {
     const place = {
-      name: shortName(centerAddr) || 'Pinned location',
+      name: centerLabel || shortName(centerAddr) || 'Pinned location',
       address: centerAddr || 'Pinned on map',
       lat: center.lat, lon: center.lon,
     };
@@ -150,7 +155,7 @@ export default function BookRide({ gender, busy, onBook, onProfile, onStage, vis
     if (!customPickup) {
       api.get('/maps/reverse', { params: { lat: from.lat, lon: from.lon } })
         .then((res) => {
-          const n = shortName(res.data.address);
+          const n = res.data.label || shortName(res.data.address);
           if (n) setPickup((p) => (p ? { ...p, name: n } : p));
         }).catch(() => {});
     }
@@ -251,11 +256,12 @@ export default function BookRide({ gender, busy, onBook, onProfile, onStage, vis
           </TouchableOpacity>
           <View style={s.sheet}>
             <Text style={s.sheetLabel}>{pickTarget === 'pickup' ? 'Pickup location' : 'Drop location'}</Text>
-            <Text style={s.pickAddr} numberOfLines={2}>
+            <Text style={s.pickAddr} numberOfLines={1}>
               {pickTooFar
                 ? `That is ${Math.round(pickDistance)} km away. Choose a place within ${RADIUS_KM} km.`
-                : centerAddr || (moving ? 'Move the map…' : 'Finding address…')}
+                : centerLabel || (moving ? 'Move the map…' : 'Finding place…')}
             </Text>
+            {!pickTooFar && !!centerAddr && !moving && <Text style={s.pickSub} numberOfLines={2}>{centerAddr}</Text>}
             <TouchableOpacity
               style={[s.book, (pickTooFar || !center || moving) && { opacity: 0.45 }]}
               disabled={pickTooFar || !center || moving}
@@ -333,8 +339,8 @@ export default function BookRide({ gender, busy, onBook, onProfile, onStage, vis
                           </View>
                           <Text style={s.vSub}>
                             {f.capacity === 1 ? 'Solo ride' : `Shared · up to ${f.capacity} riders`}
-                            {info ? ` · Drop ${dropTime(info.minutes)}` : ''}
                           </Text>
+                          {info && <Text style={s.vSub}>Drop {dropTime(info.minutes)}</Text>}
                         </View>
                         <Text style={s.vPrice}>{price}</Text>
                       </TouchableOpacity>
@@ -472,7 +478,8 @@ const s = StyleSheet.create({
     borderTopWidth: 1, borderColor: C.line, paddingHorizontal: 16, paddingTop: 16, paddingBottom: 18,
   },
   sheetLabel: { color: C.muted, fontSize: 13 },
-  pickAddr: { color: C.text, fontSize: 17, fontWeight: '600', marginTop: 4, marginBottom: 6, minHeight: 44 },
+  pickAddr: { color: C.text, fontSize: 18, fontWeight: '700', marginTop: 4, marginBottom: 2 },
+  pickSub: { color: C.muted, fontSize: 13, marginBottom: 6, minHeight: 34 },
 
   vrow: { flexDirection: 'row', alignItems: 'center', padding: 12, borderRadius: 14, borderWidth: 1.5, borderColor: 'transparent', marginBottom: 6 },
   vrowOn: { borderColor: C.yellow, backgroundColor: C.card },

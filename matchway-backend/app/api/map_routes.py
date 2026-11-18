@@ -33,7 +33,9 @@ async def place(place_id: str):
 @router.get("/reverse")
 async def reverse(lat: float, lon: float):
     try:
-        return {"address": ola_places.reverse_geocode(lat, lon)}
+        place = ola_places.reverse_place(lat, lon)
+        return {"address": place["address"], "name": place["name"], "label": place["label"],
+                "distance_m": place["distance_m"]}
     except Exception as e:
         raise _fail(e)
 

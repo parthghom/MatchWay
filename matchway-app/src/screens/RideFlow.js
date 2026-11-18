@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import {
   SafeAreaView, ScrollView, View, Text, TextInput, TouchableOpacity,
   StyleSheet, Alert, StatusBar, ActivityIndicator,
 } from 'react-native';
 import { api } from '../api';
 import WaitingScreen from './ride/WaitingScreen';
+import DriverSearchScreen from './ride/DriverSearchScreen';
 import MainTabs from './ride/MainTabs';
 import { saveRideToHistory } from '../history';
 
@@ -99,19 +100,18 @@ export default function RideFlow({ profile, email, onSignOut }) {
       },
       route: [from.name, drop.name],
       pickup_lat: from.lat, pickup_lon: from.lon, km,
+      user_id: profile?.user_id,
     });
     setVehicle(vehicleType); setTrip({ pickup: from, drop, km });
-    setRiderId(id); setResult(res.data); setStep('matched');
+    // a bike has one seat: straight to the driver search. Auto and cab look for peers first.
+    setRiderId(id); setResult(res.data); setStep(vehicleType === 'bike' ? 'finding' : 'matched');
   });
 
-  const confirmRide = () => run(async () => {
-    const res = await api.post('/rides/confirm', { room_id: result.room_id });
-    if (!res.data.confirmed) {
-      Alert.alert('No driver', res.data.message + '. Try again in a moment.');
-      return;
-    }
-    setRide(res.data); setStarted(false); setOtp(''); setStep('ride');
-  });
+  // a driver was found (called by the driver-search screen)
+  const driverFound = useCallback((data) => {
+    setRide(data); setStarted(false); setOtp(''); setStep('ride');
+  }, []);
+  const groupReady = useCallback(() => setStep('finding'), []);
 
   const cancelRide = () => run(async () => {
     await api.post('/rides/cancel', { rider_id: riderId });
@@ -148,7 +148,7 @@ export default function RideFlow({ profile, email, onSignOut }) {
     setPayments([]); setRating(0); setStarted(false); setOtp('');
   }
 
-  const index = { request: 0, matched: 1, ride: 2, done: 3 }[step];
+  const index = { request: 0, matched: 1, finding: 1, ride: 2, done: 3 }[step];
 
   if (step === 'request') {
     return (
@@ -163,6 +163,25 @@ export default function RideFlow({ profile, email, onSignOut }) {
     );
   }
 
+  if (step === 'finding' && result && trip) {
+    return (
+      <>
+        <StatusBar barStyle="light-content" backgroundColor={C.bg} />
+        <DriverSearchScreen
+          pickup={trip.pickup}
+          drop={trip.drop}
+          vehicle={vehicle}
+          fareLow={result.fare_low}
+          fareHigh={result.fare_high}
+          roomId={result.room_id}
+          busy={busy}
+          onCancel={cancelRide}
+          onFound={driverFound}
+        />
+      </>
+    );
+  }
+
   if (step === 'matched' && result && trip) {
     return (
       <>
@@ -173,8 +192,11 @@ export default function RideFlow({ profile, email, onSignOut }) {
           vehicle={vehicle}
           fareLow={result.fare_low}
           fareHigh={result.fare_high}
+          roomId={result.room_id}
+          riderId={riderId}
           busy={busy}
           onCancel={cancelRide}
+          onReady={groupReady}
         />
       </>
     );

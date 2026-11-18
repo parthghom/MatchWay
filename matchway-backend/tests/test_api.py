@@ -206,7 +206,33 @@ def test_drivers_nearby_spots_and_cancel_api():
     assert res.status_code == 200 and res.json() == {"count": 1, "radius_km": 2}
     assert client.get("/drivers/nearby", params={"lat": 1, "lon": 1, "vehicle_type": "plane"}).status_code == 400
 
-    client.post("/spots", json={"spot_id": "sx", "name": "Matchway Spot - X", "latitude": 18.5, "longitude": 73.8})
+    client.post("/spots", json={"spot_id": "sx", "name": "Some College", "latitude": 18.5, "longitude": 73.8})
     assert any(s["spot_id"] == "sx" for s in client.get("/spots").json())
 
     assert client.post("/rides/cancel", json={"rider_id": "nobody"}).status_code == 404
+
+
+def test_room_continue_and_confirm_twice_api():
+    from fastapi.testclient import TestClient
+    from app.main import app
+    client = TestClient(app)
+    client.post("/drivers", json={"id": "dg1", "name": "G", "vehicle_type": "auto", "latitude": 18.5, "longitude": 73.8})
+
+    def book(i):
+        return client.post("/rides/request", json={
+            "rider": {"id": f"gr{i}", "name": f"G{i}", "gender": "male", "preference": "mix"},
+            "request": {"id": f"gq{i}", "rider_id": f"gr{i}", "flow": "campus_to_destination", "destination": "GroupMall",
+                        "vehicle_type": "auto", "time_window_start": 600, "time_window_end": 660},
+            "route": ["A", "GroupMall"], "pickup_lat": 18.5, "pickup_lon": 73.8, "km": 5, "user_id": f"u{i}"})
+
+    room = book(1).json()["room_id"]
+    assert book(2).json()["room_id"] == room
+    st = client.get(f"/rooms/{room}").json()
+    assert [m["user_id"] for m in st["members"]] == ["u1", "u2"]
+    assert client.post("/rooms/continue", json={"rider_id": "gr1"}).json()["ready"] is False
+    assert client.post("/rooms/continue", json={"rider_id": "gr2"}).json()["ready"] is True
+
+    first = client.post("/rides/confirm", json={"room_id": room}).json()
+    second = client.post("/rides/confirm", json={"room_id": room}).json()   # the other rider asks too
+    assert first["confirmed"] and second["ride_id"] == first["ride_id"]
+    assert client.get("/rooms/nope").status_code == 404

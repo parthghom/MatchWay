@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Body
+from fastapi import APIRouter, Depends, HTTPException, Body, Response
 from app import state
 from app.auth import get_current_user, AuthUser
 from app.engine import onboarding
@@ -68,8 +68,18 @@ async def get_me(user: AuthUser = Depends(get_current_user)):
         "profile": {**profile, "status": status},
         "documents": sanitized_docs,
         "vehicle": vehicle,
-        "next_step": step
+        "next_step": step,
+        "user_id": user.id
     }
+
+@router.get("/profile/avatar/{user_id}")
+async def get_avatar(user_id: str, user: AuthUser = Depends(get_current_user)):
+    """The selfie of a rider, shown as the profile picture to co-riders."""
+    data = state.current.profiles.get_document_image(user_id, "selfie")
+    if not data:
+        raise HTTPException(status_code=404, detail="No photo")
+    media = "image/png" if data.startswith(b"\x89PNG") else "image/jpeg"
+    return Response(content=data, media_type=media, headers={"Cache-Control": "private, max-age=3600"})
 
 @router.post("/profile/role")
 async def set_role(role: str = Body(..., embed=True), user: AuthUser = Depends(get_current_user)):

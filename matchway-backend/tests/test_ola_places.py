@@ -134,3 +134,32 @@ def test_fetch_map_file_encodes_spaces_in_font_names(monkeypatch):
 def test_parse_predictions_keeps_distance():
     data = {"predictions": [{"place_id": "p1", "description": "A, Pune", "distance_meters": 2100}]}
     assert parse_predictions(data)[0]["distance_m"] == 2100
+
+
+def _reverse_data():
+    return {"results": [
+        {"name": "Big Mall", "formatted_address": "Big Mall, Katraj, Pune",
+         "geometry": {"location": {"lat": 18.4500, "lng": 73.8600}}},          # about 500 m from the pin
+        {"name": "Chai Point", "formatted_address": "Chai Point, Katraj, Pune",
+         "geometry": {"location": {"lat": 18.45002, "lng": 73.85501}}},        # about 2 m from the pin
+    ]}
+
+
+def test_reverse_picks_closest_place_not_first():
+    best = ola_places.best_reverse_result(_reverse_data(), 18.45, 73.855)
+    assert best["name"] == "Chai Point" and best["label"] == "Chai Point"
+    assert best["distance_m"] < 10
+
+
+def test_reverse_says_near_when_pin_is_not_on_the_place():
+    data = {"results": [_reverse_data()["results"][0]]}
+    best = ola_places.best_reverse_result(data, 18.45, 73.855)
+    assert best["label"] == "Near Big Mall" and best["distance_m"] > 25
+
+
+def test_reverse_uses_distance_meters_and_handles_empty():
+    data = {"results": [{"name": "A", "formatted_address": "A, Pune", "distance_meters": 80},
+                        {"name": "B", "formatted_address": "B, Pune", "distance_meters": 12}]}
+    assert ola_places.best_reverse_result(data, 0, 0)["label"] == "B"
+    assert ola_places.best_reverse_result({}, 0, 0)["label"] == ""
+    assert ola_places.best_reverse_result({"results": [{"formatted_address": "X Road, Pune"}]}, 0, 0)["label"] == "X Road"

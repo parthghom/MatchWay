@@ -35,6 +35,12 @@ class MemoryProfileRepository:
         # Return list of {doc_type, status, doc_number} as requested
         return [{"doc_type": d["doc_type"], "status": d["status"], "doc_number": d.get("doc_number")} for d in docs]
 
+    def get_document_image(self, user_id, doc_type):
+        for d in self.documents.get(user_id, []):
+            if d["doc_type"] == doc_type:
+                return d.get("image_bytes")
+        return None
+
     def save_document(self, user_id, doc_type, image_bytes, doc_number, status):
         if user_id not in self.documents:
             self.documents[user_id] = []
@@ -100,6 +106,15 @@ class SupabaseProfileRepository:
     def list_documents(self, user_id):
         res = self.client.table("documents").select("doc_type,status,doc_number").eq("user_id", user_id).execute()
         return res.data
+
+    def get_document_image(self, user_id, doc_type):
+        res = self.client.table("documents").select("storage_path").eq("user_id", user_id).eq("doc_type", doc_type).limit(1).execute()
+        if not res.data:
+            return None
+        try:
+            return self.client.storage.from_("documents").download(res.data[0]["storage_path"])
+        except Exception:
+            return None
 
     def save_document(self, user_id, doc_type, image_bytes, doc_number, status):
         content_type = "image/png" if image_bytes.startswith(b"\x89PNG") else "image/jpeg"

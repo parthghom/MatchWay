@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException
 from app import state
 from app.api.schemas import (
     SpotRequest, SpotResponse, RideRequestPayload, RideRequestResponse,
-    ConfirmRequest, CancelRequest, ConfirmResponse, StartRideRequest, StartRideResponse,
+    ConfirmRequest, CancelRequest, ContinueRequest, ConfirmResponse, StartRideRequest, StartRideResponse,
     CompleteRideRequest, CompleteRideResponse, ReviewRequest, ReviewResponse,
     VerifyEmailRequest, VerifyImageRequest, VerifySelfieRequest, VerifyResponse, UserVerifyStatus, FareEstimateResponse
 )
@@ -90,6 +90,8 @@ async def request_ride(payload: RideRequestPayload):
             payload.rider, payload.request, payload.route,
             payload.pickup_lat, payload.pickup_lon, payload.km
         )
+        if payload.user_id:
+            state.current.rides.set_rider_user(payload.rider.id, payload.user_id)
         try:
             state.current.repo.save_rider(payload.rider)
         except Exception as e:
@@ -105,6 +107,20 @@ async def request_ride(payload: RideRequestPayload):
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
+@router.get("/rooms/{room_id}")
+async def room_status(room_id: str):
+    try:
+        return state.current.rides.room_status(room_id)
+    except KeyError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+@router.post("/rooms/continue")
+async def room_continue(payload: ContinueRequest):
+    try:
+        return state.current.rides.vote_continue(payload.rider_id)
+    except KeyError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
 @router.post("/rides/cancel")
 async def cancel_ride(payload: CancelRequest):
     try:
@@ -118,7 +134,8 @@ async def cancel_ride(payload: CancelRequest):
 @router.post("/rides/confirm")
 async def confirm_ride(payload: ConfirmRequest):
     try:
-        result = state.current.rides.confirm_ride(payload.room_id)
+        # every member of the group asks; the first one finds the driver, the rest get the same ride
+        result = state.current.rides.ride_for_room(payload.room_id) or state.current.rides.confirm_ride(payload.room_id)
         if result is None:
             return {
                 "confirmed": False,

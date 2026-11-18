@@ -155,3 +155,69 @@ def test_cancel_request_not_allowed_after_driver_assigned():
     assert service.confirm_ride(res.room_id) is not None
     with pytest.raises(ValueError):
         service.cancel_request("r1")
+
+
+def _group_service(n, vehicle="auto"):
+    service = RideService(DriverDispatcher())
+    for i in range(1, n + 1):
+        rider = Rider(id=f"r{i}", name=f"P{i}", gender="male", preference="mix")
+        req = RideRequest(id=f"q{i}", rider_id=f"r{i}", flow="campus_to_destination", destination="Mall",
+                          vehicle_type=vehicle, time_window_start=100, time_window_end=200)
+        service.request_ride(rider, req, ["S1", "Mall"], 12.0, 77.0, 10.0)
+        service.set_rider_user(f"r{i}", f"user{i}")
+    return service
+
+
+def test_group_two_riders_both_must_continue():
+    service = _group_service(2)
+    st = service.room_status("room_1", now=0)
+    assert [m["name"] for m in st["members"]] == ["P1", "P2"] and st["members"][0]["user_id"] == "user1"
+    assert st["seconds_left"] is None and st["ready"] is False        # not full: no timer
+
+    st = service.vote_continue("r1", now=1)
+    assert st["accepted"] == ["r1"] and st["ready"] is False
+    st = service.vote_continue("r2", now=2)
+    assert st["ready"] is True                                         # both agreed
+
+
+def test_group_new_member_cancels_earlier_votes_and_closed_room_takes_nobody():
+    service = _group_service(2)
+    service.vote_continue("r1", now=1)
+    # a third rider joins: r1's "continue with 2" no longer counts
+    r3 = Rider(id="r3", name="P3", gender="male", preference="mix")
+    q3 = RideRequest(id="q3", rider_id="r3", flow="campus_to_destination", destination="Mall",
+                     vehicle_type="auto", time_window_start=100, time_window_end=200)
+    service.request_ride(r3, q3, ["S1", "Mall"], 12.0, 77.0, 10.0)
+    st = service.room_status("room_1", now=2)
+    assert st["accepted"] == [] and len(st["members"]) == 3
+
+    for rid in ("r1", "r2", "r3"):
+        st = service.vote_continue(rid, now=3)
+    assert st["ready"] is True
+    r4 = Rider(id="r4", name="P4", gender="male", preference="mix")
+    q4 = RideRequest(id="q4", rider_id="r4", flow="campus_to_destination", destination="Mall",
+                     vehicle_type="auto", time_window_start=100, time_window_end=200)
+    service.request_ride(r4, q4, ["S1", "Mall"], 12.0, 77.0, 10.0)
+    assert service.room_of("r4").room_id != "room_1"                   # a closed room takes nobody new
+
+
+def test_full_group_has_15_second_timer_and_resets():
+    service = _group_service(3)                                         # auto holds 3
+    assert service.room_status("room_1", now=100)["seconds_left"] == 15
+    assert service.room_status("room_1", now=105)["seconds_left"] == 10
+    service.vote_continue("r1", now=106)
+    service.vote_continue("r2", now=107)
+    st = service.room_status("room_1", now=116)                         # r3 never accepted: time is up
+    assert st["accepted"] == [] and st["seconds_left"] == 15 and st["ready"] is False
+    for rid in ("r1", "r2", "r3"):
+        st = service.vote_continue(rid, now=118)
+    assert st["ready"] is True and st["seconds_left"] is None
+
+
+def test_alone_can_continue_and_cancel_clears_vote():
+    service = _group_service(1)
+    assert service.vote_continue("r1", now=0)["ready"] is True
+    service2 = _group_service(2)
+    service2.vote_continue("r1", now=0)
+    service2.cancel_request("r1")
+    assert service2.votes.contains("r1") is False

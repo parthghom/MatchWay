@@ -29,7 +29,7 @@ export function buildHtml(api) {
           border: 2px solid #0B0B0B; box-shadow: 0 0 0 2px #FFC800; font: 800 13px/20px sans-serif; text-align: center; }
   .spot .lbl { position: absolute; top: 29px; left: 50%; transform: translateX(-50%); white-space: nowrap; text-align: center;
                font: 700 10px/12px sans-serif; color: #FFC800; text-shadow: 0 0 3px #000, 0 0 3px #000, 0 0 3px #000; }
-  .spot .lbl small { display: block; font-weight: 500; color: #fff; }
+  .spot .lbl { color: #fff; font-weight: 600; }
   .far .spot .lbl { display: none; }
   .drop { width: 18px; height: 18px; background: #FFC800; border: 3px solid #0B0B0B; box-shadow: 0 0 0 2px #FFC800; }
 </style>
@@ -69,9 +69,10 @@ export function buildHtml(api) {
       spotMarkers.forEach(function (m) { m.remove(); });
       spotMarkers = (c.list || []).map(function (sp) {
         var el = dot('spot');
+        // the logo, and the college's name under it
         var parts = String(sp.name).split(' - ');
-        el.innerHTML = 'M<div class="lbl">' + parts[0] + (parts[1] ? '<small></small>' : '') + '</div>';
-        if (parts[1]) el.querySelector('small').textContent = parts[1];
+        el.innerHTML = 'M<div class="lbl"></div>';
+        el.querySelector('.lbl').textContent = parts[parts.length - 1];
         return new maplibregl.Marker({ element: el }).setLngLat([sp.longitude, sp.latitude]).addTo(map);
       });
     } else if (c.t === 'route') {

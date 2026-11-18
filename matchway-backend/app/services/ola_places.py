@@ -8,6 +8,7 @@
 import json
 import os
 import urllib.parse
+from app.engine.fare import distance_km
 import urllib.request
 
 BASE = "https://api.olamaps.io"
@@ -122,15 +123,51 @@ def place_details(place_id, http_get=None):
     return parse_place_details(http_get(url, {"X-Request-Id": "matchway-details"}))
 
 
-def reverse_geocode(lat, lon, http_get=None):
-    """Coordinates -> a readable address (used for 'Current location')."""
+NEAR_M = 25  # a place further than this from the pin is shown as "Near <place>"
+
+
+def _result_distance_m(result, lat, lon):
+    """How far a reverse-geocode result is from the pin, in metres (None if unknown)."""
+    loc = ((result.get("geometry") or {}).get("location")) or {}
+    if loc.get("lat") is not None and loc.get("lng") is not None:
+        return distance_km(lat, lon, loc["lat"], loc["lng"]) * 1000
+    d = result.get("distance_meters")
+    return float(d) if d is not None else None
+
+
+def best_reverse_result(data, lat, lon):
+    """Picks the Ola result closest to the pin (not just the first one), so moving the
+    pin a little changes the place name. Returns {name, address, label, distance_m}."""
+    results = (data or {}).get("results") or []
+    if not results:
+        return {"name": "", "address": "", "label": "", "distance_m": None}
+
+    scored = [(_result_distance_m(r, lat, lon), i, r) for i, r in enumerate(results)]
+    known = [t for t in scored if t[0] is not None]
+    d, _, best = min(known, key=lambda t: (t[0], t[1])) if known else (None, 0, results[0])
+
+    address = best.get("formatted_address", "") or ""
+    name = (best.get("name") or address.split(",")[0]).strip()
+    label = name
+    if d is not None and d > NEAR_M and name:
+        label = f"Near {name}"       # the pin is not on that building
+    return {"name": name, "address": address, "label": label,
+            "distance_m": None if d is None else round(d)}
+
+
+def reverse_place(lat, lon, http_get=None):
+    """Coordinates -> the closest named place and address."""
     key = _api_key()
     http_get = http_get or _http_get
     params = {"latlng": f"{lat},{lon}", "api_key": key}
     url = f"{BASE}/places/v1/reverse-geocode?" + urllib.parse.urlencode(params)
     data = http_get(url, {"X-Request-Id": "matchway-reverse"})
-    results = (data or {}).get("results") or []
-    return results[0].get("formatted_address", "") if results else ""
+    return best_reverse_result(data, lat, lon)
+
+
+def reverse_geocode(lat, lon, http_get=None):
+    """Coordinates -> a readable address (used for 'Current location')."""
+    return reverse_place(lat, lon, http_get)["address"]
 
 
 def decode_polyline(encoded):

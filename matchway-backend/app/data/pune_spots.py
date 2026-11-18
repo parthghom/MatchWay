@@ -1,4 +1,4 @@
-# "Matchway Spot" pickup points at college entrances in Pune.
+# Matchway Spots: pickup points at college entrances in Pune (shown as the M logo + college name).
 # To add a college, add one line: (id, college name, latitude, longitude).
 # NOTE: these coordinates are approximate (campus gate area). Check the pins
 # on the map and fix any that sit in the wrong place.
@@ -32,7 +32,7 @@ def seed_spots(spot_service):
     added = 0
     for spot_id, college, lat, lon in PUNE_COLLEGE_SPOTS:
         try:
-            spot_service.add_spot(spot_id, f"Matchway Spot - {college}", lat, lon)
+            spot_service.add_spot(spot_id, college, lat, lon)
             added += 1
         except ValueError:
             pass  # already exists

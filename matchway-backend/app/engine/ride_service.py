@@ -10,6 +10,9 @@
 # 8. complete and pay: Ride ends -> driver released -> fares split and paid.
 # 9. review: Riders rate each other and the driver using EMA.
 
+import math
+import time
+
 from app.engine.hash_map import HashMap
 from app.engine.virtual_rooms import RoomManager
 from app.engine.matching_engine import MatchingEngine
@@ -17,6 +20,9 @@ from app.engine.driver_dispatch import DriverDispatcher
 from app.engine.reviews import ReviewService
 from app.engine.otp import OTPService
 from app.engine.fare import approximate_fare_range, exact_fare, split_payment
+
+
+GROUP_ACCEPT_SECONDS = 15   # everybody in a full group must accept within this time
 
 
 class RequestResult:
@@ -59,6 +65,11 @@ class RideService:
         self.ride_of_room = HashMap() # room_id -> ride_id
         self.ride_counter = 0
 
+        # group agreement ("continue with N")
+        self.user_of_rider = HashMap()   # rider_id -> user_id (for profile pictures)
+        self.votes = HashMap()           # rider_id -> the group ("r1,r2") they said continue to
+        self.full_since = HashMap()      # room_id -> time the room became full
+
     def request_ride(self, rider, request, route, pickup_lat, pickup_lon, km):
         if self.engine.entries.contains(rider.id) and self.engine.entries.get(rider.id).active is True:
             raise ValueError("Rider already has an active request")
@@ -99,6 +110,85 @@ class RideService:
         self.engine.unregister(rider_id)
         self.room_manager.remove(rider_id, record.request)
         self.riders.remove(rider_id)
+        if self.votes.contains(rider_id):
+            self.votes.remove(rider_id)
+
+    def set_rider_user(self, rider_id, user_id):
+        self.user_of_rider.put(rider_id, user_id)
+
+    def room_of(self, rider_id):
+        for room_id in self.rooms_by_id.keys():
+            room = self.rooms_by_id.get(room_id)
+            if rider_id in room.rider_ids():
+                return room
+        return None
+
+    def ride_for_room(self, room_id):
+        if self.ride_of_room.contains(room_id):
+            return self.rides.get(self.ride_of_room.get(room_id))
+        return None
+
+    def _group_key(self, room):
+        return ",".join(sorted(room.rider_ids()))
+
+    def room_status(self, room_id, now=None):
+        """Who is in the room, who has accepted, and the 15 s timer when the room is full."""
+        if not self.rooms_by_id.contains(room_id):
+            raise KeyError(f"Room {room_id} not found")
+        now = time.time() if now is None else now
+        room = self.rooms_by_id.get(room_id)
+        ids = room.rider_ids()
+
+        seconds_left = None
+        if room.is_full() and not room.closed:
+            if not self.full_since.contains(room_id):
+                self.full_since.put(room_id, now)
+            elapsed = now - self.full_since.get(room_id)
+            if elapsed >= GROUP_ACCEPT_SECONDS:
+                # time is up: everybody must accept again in a fresh 15 s
+                for rid in ids:
+                    if self.votes.contains(rid):
+                        self.votes.remove(rid)
+                self.full_since.put(room_id, now)
+                elapsed = 0
+            seconds_left = math.ceil(GROUP_ACCEPT_SECONDS - elapsed)
+        elif self.full_since.contains(room_id):
+            self.full_since.remove(room_id)
+
+        key = self._group_key(room)
+        accepted = [rid for rid in ids if self.votes.contains(rid) and self.votes.get(rid) == key]
+        ride = self.ride_for_room(room_id)
+        members = []
+        for m_rider, _ in room.members:
+            user_id = self.user_of_rider.get(m_rider.id) if self.user_of_rider.contains(m_rider.id) else None
+            members.append({"rider_id": m_rider.id, "name": m_rider.name, "user_id": user_id})
+        return {
+            "room_id": room_id,
+            "vehicle_type": room.vehicle_type,
+            "capacity": room.capacity,
+            "members": members,
+            "accepted": accepted,
+            "ready": room.closed,           # everyone agreed (or a driver was already found)
+            "seconds_left": seconds_left,
+            "ride_id": ride.ride_id if ride else None,
+        }
+
+    def vote_continue(self, rider_id, now=None):
+        """A rider says "continue with this group". When every member has said it, the room closes."""
+        room = self.room_of(rider_id)
+        if room is None:
+            raise KeyError(f"Rider {rider_id} is not in a room")
+        if not room.closed:
+            self.room_status(room.room_id, now)   # keeps the timer up to date first
+            self.votes.put(rider_id, self._group_key(room))
+            key = self._group_key(room)
+            everyone = True
+            for rid in room.rider_ids():
+                if not (self.votes.contains(rid) and self.votes.get(rid) == key):
+                    everyone = False
+            if everyone:
+                room.closed = True               # nobody else can join now
+        return self.room_status(room.room_id, now)
 
     def confirm_ride(self, room_id):
         if not self.rooms_by_id.contains(room_id):

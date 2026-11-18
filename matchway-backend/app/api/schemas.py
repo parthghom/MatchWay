@@ -24,6 +24,7 @@ class RideRequestPayload(BaseModel):
     pickup_lat: float
     pickup_lon: float
     km: float
+    user_id: Optional[str] = None   # lets co-riders see this rider's profile picture
 
 class RideRequestResponse(BaseModel):
     room_id: str
@@ -35,6 +36,9 @@ class ConfirmRequest(BaseModel):
     room_id: str
 
 class CancelRequest(BaseModel):
+    rider_id: str
+
+class ContinueRequest(BaseModel):
     rider_id: str
 
 class ConfirmResponse(BaseModel):
