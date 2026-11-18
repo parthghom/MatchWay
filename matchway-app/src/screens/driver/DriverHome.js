@@ -11,7 +11,7 @@ const HEADER_H = 100;
 export const VEHICLE_ICON = { bike: '🏍️', auto: '🛺', cab: '🚕' };
 
 export default function DriverHome({ vehicleType, onProfile, visible = true }) {
-  const { coords: user, status } = useDriverLocation();
+  const { coords: user, status, debug } = useDriverLocation();
   const mapRef = useRef(null);
 
   return (
@@ -38,6 +38,7 @@ export default function DriverHome({ vehicleType, onProfile, visible = true }) {
             )}
           </View>
         )}
+        {!user && !!debug && <Text style={s.debug}>{debug}</Text>}
         <TouchableOpacity
           style={s.locate}
           onPress={() => user && mapRef.current && mapRef.current.flyTo(user.lat, user.lon, 16)}
@@ -71,6 +72,7 @@ const s = StyleSheet.create({
     position: 'absolute', bottom: 16, alignSelf: 'center', flexDirection: 'row', alignItems: 'center',
     backgroundColor: C.card, borderRadius: 24, borderWidth: 1, borderColor: C.line, paddingVertical: 10, paddingHorizontal: 18,
   },
+  debug: { position: 'absolute', bottom: 66, left: 16, right: 16, textAlign: 'center', color: C.muted, fontSize: 12 },
   pillText: { color: C.text, fontSize: 14 },
   pillLink: { color: C.yellow, fontWeight: '700', fontSize: 14 },
   locate: {

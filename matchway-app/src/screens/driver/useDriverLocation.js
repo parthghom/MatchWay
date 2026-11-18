@@ -11,12 +11,14 @@ Geolocation.setRNConfiguration({ skipPermissionRequests: true, authorizationLeve
 export function useDriverLocation() {
   const [coords, setCoords] = useState(null);
   const [status, setStatus] = useState('loading');
+  const [debug, setDebug] = useState('');
 
   useEffect(() => {
     let alive = true;
     let have = false;
     let watchId = null;
     let retry = null;
+    let tries = 0;
 
     const got = (pos) => {
       if (!alive) return;
@@ -26,10 +28,18 @@ export function useDriverLocation() {
       if (retry) { clearInterval(retry); retry = null; }
     };
 
+    // every other try uses Android's own location service instead of Google's, in case one of them hangs
     const quick = () => {
-      Geolocation.getCurrentPosition(got, () => {}, {
-        enableHighAccuracy: false, timeout: 10000, maximumAge: 120000,
+      tries += 1;
+      const provider = tries % 2 === 1 ? 'auto' : 'android';
+      Geolocation.setRNConfiguration({
+        skipPermissionRequests: true, authorizationLevel: 'whenInUse', locationProvider: provider,
       });
+      Geolocation.getCurrentPosition(
+        got,
+        (e) => { if (alive && !have) setDebug(`try ${tries} (${provider}): code ${e && e.code} ${(e && e.message) || ''}`); },
+        { enableHighAccuracy: false, timeout: 10000, maximumAge: 120000 }
+      );
     };
 
     async function start() {
@@ -40,12 +50,14 @@ export function useDriverLocation() {
           return;
         }
       }
+      setDebug('permission ok, asking the phone for your position...');
       quick();
       retry = setInterval(() => { if (!have) quick(); }, 12000);
       watchId = Geolocation.watchPosition(
         got,
         (err) => {
           if (!alive || have) return;
+          setDebug(`watch: code ${err && err.code} ${(err && err.message) || ''}`);
           setStatus(err && err.code === 1 ? 'denied' : 'error');
         },
         { enableHighAccuracy: true, distanceFilter: 10, interval: 5000, fastestInterval: 3000 }
@@ -57,8 +69,9 @@ export function useDriverLocation() {
       alive = false;
       if (retry) clearInterval(retry);
       if (watchId !== null) Geolocation.clearWatch(watchId);
+      Geolocation.setRNConfiguration({ skipPermissionRequests: true, authorizationLevel: 'whenInUse', locationProvider: 'auto' });
     };
   }, []);
 
-  return { coords, status };
+  return { coords, status, debug };
 }
