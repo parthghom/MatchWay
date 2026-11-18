@@ -11,7 +11,7 @@ Geolocation.setRNConfiguration({ skipPermissionRequests: true, authorizationLeve
 export function useDriverLocation() {
   const [coords, setCoords] = useState(null);
   const [status, setStatus] = useState('loading');
-  const [debug, setDebug] = useState('');
+  const [debug, setDebug] = useState('build 3: starting...');
 
   useEffect(() => {
     let alive = true;
@@ -37,27 +37,28 @@ export function useDriverLocation() {
       });
       Geolocation.getCurrentPosition(
         got,
-        (e) => { if (alive && !have) setDebug(`try ${tries} (${provider}): code ${e && e.code} ${(e && e.message) || ''}`); },
+        (e) => { if (alive && !have) setDebug(`build 3, try ${tries} (${provider}): code ${e && e.code} ${(e && e.message) || ''}`); },
         { enableHighAccuracy: false, timeout: 10000, maximumAge: 120000 }
       );
     };
 
     async function start() {
       if (Platform.OS === 'android') {
+        setDebug('build 3: asking for permission...');
         const res = await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION);
         if (res !== PermissionsAndroid.RESULTS.GRANTED) {
           if (alive) setStatus('denied');
           return;
         }
       }
-      setDebug('permission ok, asking the phone for your position...');
+      setDebug('build 3: permission ok, asking the phone for your position...');
       quick();
       retry = setInterval(() => { if (!have) quick(); }, 12000);
       watchId = Geolocation.watchPosition(
         got,
         (err) => {
           if (!alive || have) return;
-          setDebug(`watch: code ${err && err.code} ${(err && err.message) || ''}`);
+          setDebug(`build 3, watch: code ${err && err.code} ${(err && err.message) || ''}`);
           setStatus(err && err.code === 1 ? 'denied' : 'error');
         },
         { enableHighAccuracy: true, distanceFilter: 10, interval: 5000, fastestInterval: 3000 }
