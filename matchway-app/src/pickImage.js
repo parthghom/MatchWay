@@ -1,4 +1,13 @@
+import { PermissionsAndroid, Platform } from 'react-native';
 import { launchCamera, launchImageLibrary } from 'react-native-image-picker';
+
+// The manifest lists the CAMERA permission, so Android needs us to ask for it
+// ourselves before opening the camera (the picker library will not do it).
+async function askCameraPermission() {
+  if (Platform.OS !== 'android') return true;
+  const res = await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.CAMERA);
+  return res === PermissionsAndroid.RESULTS.GRANTED;
+}
 
 // source: 'camera' or 'gallery'; front: true for selfies.
 // Returns { uri, base64 } or null if the user cancelled.
@@ -11,6 +20,9 @@ export async function pickImage(source, front) {
     selectionLimit: 1,
   };
   if (source === 'camera') {
+    if (!(await askCameraPermission())) {
+      throw new Error('Camera permission is needed. Allow it in your phone settings.');
+    }
     options.cameraType = front ? 'front' : 'back';
   }
   const res = source === 'camera' ? await launchCamera(options) : await launchImageLibrary(options);
