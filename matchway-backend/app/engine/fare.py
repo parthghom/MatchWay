@@ -6,8 +6,8 @@ from app.engine.kd_tree import haversine_m
 from app.models.constants import VEHICLE_CAPACITY
 
 # Configuration for fares
-BASE_FARE = {"cab": 50.0, "auto": 30.0, "bike": 20.0}
-PER_KM = {"cab": 14.0, "auto": 10.0, "bike": 7.0}
+BASE_FARE = {"cab": 40.0, "auto": 25.0, "bike": 15.0}
+PER_KM = {"cab": 20.0, "auto": 15.0, "bike": 10.0}
 
 def distance_km(lat1, lon1, lat2, lon2):
     """Returns the distance between two points in kilometers."""

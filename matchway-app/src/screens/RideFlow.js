@@ -111,7 +111,13 @@ export default function RideFlow({ profile, email, onSignOut }) {
   const driverFound = useCallback((data) => {
     setRide(data); setStarted(false); setOtp(''); setStep('ride');
   }, []);
-  const groupReady = useCallback(() => setStep('finding'), []);
+  // the group is final: nobody else can join, so show one exact price (full fare / riders)
+  const groupReady = useCallback((room) => {
+    if (room && typeof room.exact_share === 'number') {
+      setResult((r) => (r ? { ...r, fare_low: room.exact_share, fare_high: room.exact_share } : r));
+    }
+    setStep('finding');
+  }, []);
 
   const cancelRide = () => run(async () => {
     await api.post('/rides/cancel', { rider_id: riderId });

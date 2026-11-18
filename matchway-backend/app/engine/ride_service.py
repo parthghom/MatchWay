@@ -162,8 +162,16 @@ class RideService:
         for m_rider, _ in room.members:
             user_id = self.user_of_rider.get(m_rider.id) if self.user_of_rider.contains(m_rider.id) else None
             members.append({"rider_id": m_rider.id, "name": m_rider.name, "user_id": user_id})
+        # exact share for the riders now in the room: full vehicle fare / riders (longest trip sets the total)
+        max_km = 0.0
+        for m_rider, _ in room.members:
+            record = self.riders.get(m_rider.id)
+            if record.km > max_km:
+                max_km = record.km
+        exact_share = exact_fare(room.vehicle_type, max_km, len(room.members))
         return {
             "room_id": room_id,
+            "exact_share": exact_share,
             "vehicle_type": room.vehicle_type,
             "capacity": room.capacity,
             "members": members,

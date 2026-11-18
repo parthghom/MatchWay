@@ -58,7 +58,7 @@ export default function WaitingScreen({ pickup, drop, vehicle, fareLow, fareHigh
         setRoom(res.data);
         if (res.data.ready && !readyDone.current) {
           readyDone.current = true;
-          onReady();
+          onReady(res.data);
         }
       } catch (e) {
         // keep the last status if the network blinks
@@ -74,7 +74,7 @@ export default function WaitingScreen({ pickup, drop, vehicle, fareLow, fareHigh
     try {
       const res = await api.post('/rooms/continue', { rider_id: riderId });
       setRoom(res.data);
-      if (res.data.ready && !readyDone.current) { readyDone.current = true; onReady(); }
+      if (res.data.ready && !readyDone.current) { readyDone.current = true; onReady(res.data); }
     } catch (e) {
       // the next poll will show the real state
     } finally {

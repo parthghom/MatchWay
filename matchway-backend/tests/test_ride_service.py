@@ -221,3 +221,14 @@ def test_alone_can_continue_and_cancel_clears_vote():
     service2.vote_continue("r1", now=0)
     service2.cancel_request("r1")
     assert service2.votes.contains("r1") is False
+
+
+def test_solo_continue_gives_one_exact_price():
+    # auto, 10 km: 25 + 15*10 = 175 for one rider; the room closes so nobody can join and lower it
+    service = _group_service(1)
+    st = service.vote_continue("r1", now=1)
+    assert st["ready"] is True and st["exact_share"] == 175.0
+
+    # two riders in the room: the same vehicle fare is split
+    service = _group_service(2)
+    assert service.room_status("room_1", now=0)["exact_share"] == 87.5
