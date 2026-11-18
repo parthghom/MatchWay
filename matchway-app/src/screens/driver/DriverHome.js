@@ -3,7 +3,7 @@
 import React, { useRef } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, Linking, StatusBar } from 'react-native';
 import { C } from '../../theme';
-import { useLocation } from '../../location';
+import { useDriverLocation } from './useDriverLocation';
 import OlaMap from '../../components/OlaMap';
 import { TargetIcon, ProfileIcon } from '../../components/icons';
 
@@ -11,7 +11,7 @@ const HEADER_H = 100;
 export const VEHICLE_ICON = { bike: '🏍️', auto: '🛺', cab: '🚕' };
 
 export default function DriverHome({ vehicleType, onProfile, visible = true }) {
-  const { coords: user, status } = useLocation();
+  const { coords: user, status } = useDriverLocation();
   const mapRef = useRef(null);
 
   return (

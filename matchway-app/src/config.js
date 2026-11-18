@@ -2,7 +2,7 @@
 // After you deploy the FastAPI backend (Render / Railway / etc.), paste its
 // https URL here, e.g. 'https://matchway-api.onrender.com'. With this set,
 // the app works on any phone or emulator with no IP address needed.
-const HOSTED_API = 'https://arrange-harris-expansys-anchor.trycloudflare.com';
+const HOSTED_API = 'https://matchway-api.onrender.com';
 
 // Used when HOSTED_API is empty: the Android emulator's alias for the PC that
 // runs the emulator, so `uvicorn` on your own PC works without any IP.
