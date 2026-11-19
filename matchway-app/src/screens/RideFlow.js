@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   SafeAreaView, ScrollView, View, Text, TextInput, TouchableOpacity,
   StyleSheet, Alert, StatusBar, ActivityIndicator,
@@ -76,7 +76,6 @@ export default function RideFlow({ profile, email, onSignOut }) {
   const [riderId, setRiderId] = useState('');
   const [result, setResult] = useState(null);
   const [ride, setRide] = useState(null);
-  const [otp, setOtp] = useState('');
   const [started, setStarted] = useState(false);
   const [payments, setPayments] = useState([]);
   const [rating, setRating] = useState(0);
@@ -100,21 +99,22 @@ export default function RideFlow({ profile, email, onSignOut }) {
       },
       route: [from.name, drop.name],
       pickup_lat: from.lat, pickup_lon: from.lon, km,
+      pickup_name: from.name, drop_lat: drop.lat, drop_lon: drop.lon, drop_name: drop.name,
       user_id: profile?.user_id,
     });
     setVehicle(vehicleType); setTrip({ pickup: from, drop, km });
     // a bike has one seat: straight to the driver search. Auto and cab look for peers first.
-    setRiderId(id); setResult(res.data); setStep(vehicleType === 'bike' ? 'finding' : 'matched');
+    setRiderId(id); setResult({ ...res.data, riders: 1 }); setStep(vehicleType === 'bike' ? 'finding' : 'matched');
   });
 
   // a driver was found (called by the driver-search screen)
   const driverFound = useCallback((data) => {
-    setRide(data); setStarted(false); setOtp(''); setStep('ride');
+    setRide(data); setStarted(false); setStep('ride');
   }, []);
   // the group is final: nobody else can join, so show one exact price (full fare / riders)
   const groupReady = useCallback((room) => {
     if (room && typeof room.exact_share === 'number') {
-      setResult((r) => (r ? { ...r, fare_low: room.exact_share, fare_high: room.exact_share } : r));
+      setResult((r) => (r ? { ...r, fare_low: room.exact_share, fare_high: room.exact_share, riders: room.members.length } : r));
     }
     setStep('finding');
   }, []);
@@ -124,23 +124,36 @@ export default function RideFlow({ profile, email, onSignOut }) {
     reset();
   });
 
-  const startRide = () => run(async () => {
-    await api.post('/rides/start', { ride_id: ride.ride_id, otp });
-    setStarted(true);
-  });
-
-  const completeRide = () => run(async () => {
-    const res = await api.post('/rides/complete', { ride_id: ride.ride_id });
-    setPayments(res.data.payments); setRating(0); setStep('done');
-    // remember it for the History tab
-    if (trip) {
-      saveRideToHistory({
-        id: ride.ride_id, pickup: trip.pickup.name, drop: trip.drop.name, vehicle: ride.vehicle_type || vehicle,
-        fare: ride.exact_share, km: trip.km, riders: ride.rider_ids ? ride.rider_ids.length : 1,
-        date: new Date().toISOString(),
-      });
+  // after the driver accepted: the driver starts (with the OTP) and ends the trip on his phone,
+  // so here we just follow the ride: confirmed -> in_progress -> completed
+  useEffect(() => {
+    if (step !== 'ride' || !ride) return undefined;
+    let alive = true;
+    async function load() {
+      try {
+        const res = await api.get(`/rides/${ride.ride_id}`);
+        if (!alive) return;
+        setStarted(res.data.status === 'in_progress');
+        if (res.data.status === 'completed') {
+          const pays = res.data.payments || [];
+          setPayments(pays); setRating(0); setStep('done');
+          const mine = pays.find((p) => p.rider_id === riderId);
+          if (trip) {
+            saveRideToHistory({
+              id: ride.ride_id, pickup: trip.pickup.name, drop: trip.drop.name, vehicle: ride.vehicle_type || vehicle,
+              fare: mine ? mine.amount : ride.exact_share, km: trip.km, riders: ride.rider_ids ? ride.rider_ids.length : 1,
+              date: new Date().toISOString(),
+            });
+          }
+        }
+      } catch (e) {
+        // keep the last status if the network blinks
+      }
     }
-  });
+    load();
+    const t = setInterval(load, 3000);
+    return () => { alive = false; clearInterval(t); };
+  }, [step, ride, riderId, trip, vehicle]);
 
   const review = (stars) => run(async () => {
     await api.post('/rides/review', {
@@ -151,7 +164,7 @@ export default function RideFlow({ profile, email, onSignOut }) {
 
   function reset() {
     setStep('request'); setResult(null); setRide(null); setTrip(null);
-    setPayments([]); setRating(0); setStarted(false); setOtp('');
+    setPayments([]); setRating(0); setStarted(false);
   }
 
   const index = { request: 0, matched: 1, finding: 1, ride: 2, done: 3 }[step];
@@ -179,6 +192,7 @@ export default function RideFlow({ profile, email, onSignOut }) {
           vehicle={vehicle}
           fareLow={result.fare_low}
           fareHigh={result.fare_high}
+          riders={result.riders}
           roomId={result.room_id}
           busy={busy}
           onCancel={cancelRide}
@@ -218,24 +232,24 @@ export default function RideFlow({ profile, email, onSignOut }) {
 
         {step === 'ride' && ride && (
           <View>
-            <Text style={s.h2}>{started ? 'Ride in progress' : 'Driver assigned'}</Text>
+            <Text style={s.h2}>{started ? 'Ride in progress' : 'Driver is on the way'}</Text>
             <View style={s.card}>
               <Text style={s.mute}>Driver</Text>
-              <Text style={s.value}>{ride.driver_id}</Text>
-              <Text style={[s.mute, { marginTop: 14 }]}>Your exact fare</Text>
+              <Text style={s.value}>{ride.driver_name || 'Your driver'}</Text>
+              <Text style={[s.mute, { marginTop: 14 }]}>Your fare</Text>
               <Text style={s.fare}>₹{ride.exact_share}</Text>
             </View>
             {!started ? (
-              <View>
-                <View style={s.card}>
-                  <Text style={s.mute}>Demo OTP (the driver would tell you)</Text>
-                  <Text style={s.otp}>{ride.otp}</Text>
-                  <Field label="Enter the OTP to start" value={otp} onChangeText={setOtp} keyboardType="numeric" maxLength={4} />
-                </View>
-                <Btn title="Start ride" onPress={startRide} loading={busy} />
+              <View style={s.card}>
+                <Text style={s.mute}>Your OTP. Tell it to the driver when he arrives.</Text>
+                <Text style={s.otp}>{ride.otp}</Text>
+                <Text style={s.hint}>The ride starts when the driver enters this code.</Text>
               </View>
             ) : (
-              <Btn title="Reach destination and pay" onPress={completeRide} loading={busy} />
+              <View style={s.card}>
+                <Text style={s.value}>Sit back. The trip ends when the driver reaches your drop.</Text>
+                <ActivityIndicator color={C.yellow} style={{ marginTop: 14 }} />
+              </View>
             )}
           </View>
         )}
@@ -245,7 +259,7 @@ export default function RideFlow({ profile, email, onSignOut }) {
             <Text style={s.h2}>Ride completed</Text>
             <View style={s.card}>
               <Text style={s.mute}>You paid</Text>
-              {payments.map((p) => (
+              {payments.filter((p) => p.rider_id === riderId).map((p) => (
                 <Text key={p.rider_id} style={s.fare}>₹{p.amount}</Text>
               ))}
             </View>

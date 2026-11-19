@@ -7,12 +7,15 @@ import { useDriverLocation } from './useDriverLocation';
 import LocationProbe from './LocationProbe';
 import OlaMap from '../../components/OlaMap';
 import { TargetIcon, ProfileIcon } from '../../components/icons';
+import { useDriverRide } from './useDriverRide';
+import DriverRideCard from './DriverRideCard';
 
 const HEADER_H = 100;
 export const VEHICLE_ICON = { bike: '🏍️', auto: '🛺', cab: '🚕' };
 
-export default function DriverHome({ vehicleType, onProfile, visible = true }) {
+export default function DriverHome({ vehicleType, driverId, driverName, onProfile, visible = true }) {
   const { coords: user, status, debug, feed, note } = useDriverLocation();
+  const trip = useDriverRide({ driverId, name: driverName, vehicleType, coords: user });
   const mapRef = useRef(null);
 
   return (
@@ -24,6 +27,9 @@ export default function DriverHome({ vehicleType, onProfile, visible = true }) {
         ref={mapRef}
         user={user}
         userIcon={VEHICLE_ICON[vehicleType]}
+        route={trip.route}
+        pickup={trip.ride && trip.ride.status !== 'in_progress' ? trip.ride.pickup : null}
+        drop={trip.ride && trip.ride.status !== 'confirmed' ? trip.ride.drop : null}
         visible={visible}
         style={s.map}
       >
@@ -57,6 +63,19 @@ export default function DriverHome({ vehicleType, onProfile, visible = true }) {
           </TouchableOpacity>
         </View>
       </View>
+
+      <DriverRideCard
+        top={HEADER_H + 4}
+        ride={trip.ride}
+        busy={trip.busy}
+        error={trip.error}
+        earned={trip.earned}
+        onDismissEarned={trip.dismissEarned}
+        onAccept={trip.accept}
+        onReject={trip.reject}
+        onStart={trip.start}
+        onComplete={trip.complete}
+      />
     </View>
   );
 }

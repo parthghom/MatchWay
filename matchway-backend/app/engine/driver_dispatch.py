@@ -39,8 +39,28 @@ class DriverDispatcher:
         queue = self.spot_queues.get(key)
         queue.enqueue(driver_id)
 
-    def find_driver(self, spot_id, lat, lon, vehicle_type, search_radius_m=3000):
-        """Finds the best available driver using FIFO or Nearest-Neighbor."""
+    def set_location(self, driver_id, name, vehicle_type, lat, lon):
+        """A driver app reports its live position. A new driver is added; a known one keeps is_busy."""
+        if self.drivers.contains(driver_id):
+            driver = self.drivers.get(driver_id)
+            driver.latitude = lat
+            driver.longitude = lon
+            driver.name = name or driver.name
+            driver.vehicle_type = vehicle_type
+        else:
+            driver = Driver(id=driver_id, name=name, vehicle_type=vehicle_type, latitude=lat, longitude=lon)
+        self.drivers.put(driver_id, driver)
+        return driver
+
+    def go_offline(self, driver_id):
+        """Takes the driver out, so no new rides are offered to him."""
+        if self.drivers.contains(driver_id):
+            self.drivers.remove(driver_id)
+
+    def find_driver(self, spot_id, lat, lon, vehicle_type, search_radius_m=3000, exclude=None):
+        """Finds the best available driver using FIFO or Nearest-Neighbor.
+        `exclude` is a list of driver ids that must not be picked (they declined this ride)."""
+        exclude = exclude or []
 
         # 1. FIRST IN FIRST ASSIGN
         key = f"{spot_id}|{vehicle_type}"
@@ -48,7 +68,7 @@ class DriverDispatcher:
             queue = self.spot_queues.get(key)
             while not queue.is_empty():
                 driver_id = queue.dequeue()
-                if self.drivers.contains(driver_id):
+                if self.drivers.contains(driver_id) and driver_id not in exclude:
                     driver = self.drivers.get(driver_id)
                     if not driver.is_busy:
                         driver.is_busy = True
@@ -61,7 +81,7 @@ class DriverDispatcher:
         all_driver_ids = self.drivers.keys()
         for d_id in all_driver_ids:
             d = self.drivers.get(d_id)
-            if not d.is_busy and d.vehicle_type == vehicle_type:
+            if not d.is_busy and d.vehicle_type == vehicle_type and d_id not in exclude:
                 kd_tree.insert(d.latitude, d.longitude, d_id)
 
         if kd_tree.size() == 0:

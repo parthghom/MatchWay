@@ -7,6 +7,16 @@ from app.models.rider import Rider
 from app.models.ride_request import RideRequest
 from app.models.driver import Driver
 
+
+def confirm_and_accept(client, room_id):
+    """A driver is offered the ride and accepts it; returns the confirm data the riders see."""
+    from app import state
+    first = client.post("/rides/confirm", json={"room_id": room_id}).json()
+    assert first["confirmed"] is False and first.get("offered") is True      # waiting for the driver
+    ride = state.current.rides.ride_for_room(room_id)
+    assert client.post("/rides/driver/accept", json={"ride_id": ride.ride_id, "driver_id": ride.driver_id}).status_code == 200
+    return client.post("/rides/confirm", json={"room_id": room_id}).json()
+
 def test_storage_basic_flow():
     reset()
     client = TestClient(app)
@@ -50,9 +60,9 @@ def test_storage_basic_flow():
     client.post("/rides/request", json=req_payload2)
 
     # Confirm
-    conf_res = client.post("/rides/confirm", json={"room_id": room_id})
-    ride_id = conf_res.json()["ride_id"]
-    otp = conf_res.json()["otp"]
+    conf = confirm_and_accept(client, room_id)
+    ride_id = conf["ride_id"]
+    otp = conf["otp"]
 
     # Start
     client.post("/rides/start", json={"ride_id": ride_id, "otp": otp})

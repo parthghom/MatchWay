@@ -9,9 +9,10 @@ const TOP = (StatusBar.currentHeight || 24) + 16;
 const rupee = (n) => `₹${Math.round(n)}`;
 const KIND = { bike: '🏍️ Bike', auto: '🛺 Auto', cab: '🚕 Cab' };
 
-export default function DriverSearchScreen({ pickup, drop, vehicle, fareLow, fareHigh, roomId, busy, onCancel, onFound }) {
+export default function DriverSearchScreen({ pickup, drop, vehicle, fareLow, fareHigh, riders, roomId, busy, onCancel, onFound }) {
   const [drivers, setDrivers] = useState(null);
   const [tries, setTries] = useState(0);
+  const [offered, setOffered] = useState(false);   // a driver has the request and is deciding
   const pulse = useRef(new Animated.Value(0)).current;
   const found = useRef(false);
 
@@ -27,6 +28,7 @@ export default function DriverSearchScreen({ pickup, drop, vehicle, fareLow, far
     async function attempt() {
       try {
         const res = await api.post('/rides/confirm', { room_id: roomId });
+        if (alive) setOffered(!!res.data.offered);
         if (alive && res.data.confirmed && !found.current) {
           found.current = true;
           onFound(res.data);
@@ -50,6 +52,7 @@ export default function DriverSearchScreen({ pickup, drop, vehicle, fareLow, far
     return () => { alive = false; };
   }, [pickup, vehicle, tries]);
 
+  const exactFare = Math.round(fareLow) === Math.round(fareHigh);
   const ring = {
     opacity: pulse.interpolate({ inputRange: [0, 1], outputRange: [0.6, 0] }),
     transform: [{ scale: pulse.interpolate({ inputRange: [0, 1], outputRange: [1, 2.4] }) }],
@@ -62,9 +65,11 @@ export default function DriverSearchScreen({ pickup, drop, vehicle, fareLow, far
           <Animated.View style={[s.ring, ring]} />
           <View style={s.core}><Text style={{ fontSize: 26 }}>{KIND[vehicle].split(' ')[0]}</Text></View>
         </View>
-        <Text style={s.title}>Finding your driver</Text>
+        <Text style={s.title}>{offered ? 'Waiting for the driver to accept' : 'Finding your driver'}</Text>
         <Text style={s.sub}>
-          {drivers && drivers.count > 0
+          {offered
+            ? 'A driver near you has your request. If he does not answer, the next driver gets it.'
+            : drivers && drivers.count > 0
             ? `${drivers.count} ${vehicle} driver${drivers.count > 1 ? 's' : ''} nearby`
             : 'Looking for a driver near your pickup…'}
         </Text>
@@ -78,7 +83,7 @@ export default function DriverSearchScreen({ pickup, drop, vehicle, fareLow, far
         <Text style={s.place} numberOfLines={2}>{drop.name}</Text>
         <View style={s.divider} />
         <View style={s.fareRow}>
-          <Text style={s.label}>Approx. fare</Text>
+          <Text style={s.label}>{exactFare ? (riders > 1 ? 'Your fare' : 'Total fare') : 'Approx. fare'}</Text>
           <Text style={s.fare}>
             {Math.round(fareLow) === Math.round(fareHigh) ? rupee(fareHigh) : `${rupee(fareLow)} – ${rupee(fareHigh)}`}
           </Text>

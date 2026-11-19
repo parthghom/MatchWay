@@ -6,7 +6,18 @@ from app.engine.fare import vehicle_fare
 
 client = TestClient(app)
 
+def confirm_and_accept(client, room_id):
+    """A driver is offered the ride and accepts it; returns the confirm data the riders see."""
+    from app import state
+    first = client.post("/rides/confirm", json={"room_id": room_id}).json()
+    assert first["confirmed"] is False and first.get("offered") is True      # waiting for the driver
+    ride = state.current.rides.ride_for_room(room_id)
+    assert client.post("/rides/driver/accept", json={"ride_id": ride.ride_id, "driver_id": ride.driver_id}).status_code == 200
+    return client.post("/rides/confirm", json={"room_id": room_id}).json()
+
+
 @pytest.fixture(autouse=True)
+
 def setup_state():
     state.reset()
 
@@ -87,9 +98,7 @@ def test_full_ride_flow():
     assert data1["fare_low"] <= data1["fare_high"]
 
     # 3. Confirm the room
-    confirm_resp = client.post("/rides/confirm", json={"room_id": data1["room_id"]})
-    assert confirm_resp.status_code == 200
-    confirm_data = confirm_resp.json()
+    confirm_data = confirm_and_accept(client, data1["room_id"])
     assert confirm_data["confirmed"] is True
     assert len(confirm_data["otp"]) == 4
     assert confirm_data["status"] == "confirmed"
@@ -139,7 +148,7 @@ def test_wrong_otp():
     }
     resp = client.post("/rides/request", json=r_data)
     room_id = resp.json()["room_id"]
-    confirm_data = client.post("/rides/confirm", json={"room_id": room_id}).json()
+    confirm_data = confirm_and_accept(client, room_id)
     ride_id = confirm_data["ride_id"]
 
     response = client.post("/rides/start", json={"ride_id": ride_id, "otp": "0000"})
@@ -232,7 +241,7 @@ def test_room_continue_and_confirm_twice_api():
     assert client.post("/rooms/continue", json={"rider_id": "gr1"}).json()["ready"] is False
     assert client.post("/rooms/continue", json={"rider_id": "gr2"}).json()["ready"] is True
 
-    first = client.post("/rides/confirm", json={"room_id": room}).json()
+    first = confirm_and_accept(client, room)
     second = client.post("/rides/confirm", json={"room_id": room}).json()   # the other rider asks too
     assert first["confirmed"] and second["ride_id"] == first["ride_id"]
     assert client.get("/rooms/nope").status_code == 404

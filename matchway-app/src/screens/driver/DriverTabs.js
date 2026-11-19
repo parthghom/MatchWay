@@ -30,6 +30,8 @@ export default function DriverTabs({ profile, email, onSignOut }) {
         <View style={[s.fill, !homeVisible && s.hidden]}>
           <DriverHome
             vehicleType={profile?.vehicle?.vehicle_type}
+            driverId={profile?.user_id}
+            driverName={profile?.profile?.full_name}
             visible={homeVisible}
             onProfile={() => setShowProfile(true)}
           />

@@ -25,6 +25,10 @@ class RideRequestPayload(BaseModel):
     pickup_lon: float
     km: float
     user_id: Optional[str] = None   # lets co-riders see this rider's profile picture
+    pickup_name: Optional[str] = None   # shown to the driver
+    drop_lat: Optional[float] = None
+    drop_lon: Optional[float] = None
+    drop_name: Optional[str] = None
 
 class RideRequestResponse(BaseModel):
     room_id: str
@@ -110,3 +114,18 @@ class FareEstimateResponse(BaseModel):
     source: str
     fare_low: float
     fare_high: float
+
+
+class DriverLocationRequest(BaseModel):
+    driver_id: str
+    name: str = "Driver"
+    vehicle_type: str
+    latitude: float
+    longitude: float
+
+class DriverOfflineRequest(BaseModel):
+    driver_id: str
+
+class DriverAnswerRequest(BaseModel):
+    ride_id: str
+    driver_id: str

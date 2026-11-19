@@ -4,6 +4,7 @@ from app.api.schemas import (
     SpotRequest, SpotResponse, RideRequestPayload, RideRequestResponse,
     ConfirmRequest, CancelRequest, ContinueRequest, ConfirmResponse, StartRideRequest, StartRideResponse,
     CompleteRideRequest, CompleteRideResponse, ReviewRequest, ReviewResponse,
+    DriverLocationRequest, DriverOfflineRequest, DriverAnswerRequest,
     VerifyEmailRequest, VerifyImageRequest, VerifySelfieRequest, VerifyResponse, UserVerifyStatus, FareEstimateResponse
 )
 from app.models.driver import Driver
@@ -11,6 +12,8 @@ from app.engine.fare import distance_km, approximate_fare_range, vehicle_fare
 from app.models.constants import VEHICLE_CAPACITY
 
 import base64
+import time
+from app.engine.ride_service import OFFER_SECONDS
 import datetime
 import binascii
 
@@ -88,7 +91,8 @@ async def request_ride(payload: RideRequestPayload):
     try:
         result = state.current.rides.request_ride(
             payload.rider, payload.request, payload.route,
-            payload.pickup_lat, payload.pickup_lon, payload.km
+            payload.pickup_lat, payload.pickup_lon, payload.km,
+            payload.pickup_name, payload.drop_lat, payload.drop_lon, payload.drop_name
         )
         if payload.user_id:
             state.current.rides.set_rider_user(payload.rider.id, payload.user_id)
@@ -133,30 +137,110 @@ async def cancel_ride(payload: CancelRequest):
 
 @router.post("/rides/confirm")
 async def confirm_ride(payload: ConfirmRequest):
+    """Called every few seconds by the waiting riders. A driver is offered the ride; the answer
+    is confirmed=True only after he accepts (then the OTP is shown to the riders)."""
     try:
-        # every member of the group asks; the first one finds the driver, the rest get the same ride
-        result = state.current.rides.ride_for_room(payload.room_id) or state.current.rides.confirm_ride(payload.room_id)
+        svc = state.current.rides
+        result = svc.request_driver(payload.room_id)
         if result is None:
-            return {
-                "confirmed": False,
-                "message": "No driver available"
-            }
+            ride = svc.ride_for_room(payload.room_id)
+            if ride is not None and ride.status == "offered":
+                return {"confirmed": False, "offered": True, "message": "Waiting for the driver to accept"}
+            return {"confirmed": False, "offered": False, "message": "No driver available"}
 
         try:
-            ride = state.current.rides.rides.get(result.ride_id)
-            state.current.repo.save_ride(ride)
+            state.current.repo.save_ride(result)
         except Exception as e:
             print(f"Warning: Storage error: {e}")
 
-        return {
-            "confirmed": True,
-            "ride_id": result.ride_id,
-            "driver_id": result.driver_id,
-            "rider_ids": result.rider_ids,
-            "exact_share": result.exact_share,
-            "otp": result.otp,
-            "status": result.status
-        }
+        return _ride_for_rider(result) | {"confirmed": True}
+    except KeyError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+def _ride_for_rider(ride):
+    return {
+        "ride_id": ride.ride_id,
+        "driver_id": ride.driver_id,
+        "driver_name": ride.driver_name,
+        "rider_ids": ride.rider_ids,
+        "exact_share": ride.exact_share,
+        "otp": ride.otp,
+        "status": ride.status,
+        "payments": [{"rider_id": r, "amount": a} for r, a in (ride.payments or [])] if ride.payments else None,
+    }
+
+@router.get("/rides/{ride_id}")
+async def ride_status(ride_id: str):
+    """What the riders poll after the driver accepted: confirmed -> in_progress -> completed."""
+    svc = state.current.rides
+    if not svc.rides.contains(ride_id):
+        raise HTTPException(status_code=404, detail=f"Ride {ride_id} unknown")
+    return _ride_for_rider(svc.rides.get(ride_id))
+
+# ---- driver side -----------------------------------------------------------
+@router.post("/drivers/location")
+async def driver_location(payload: DriverLocationRequest):
+    """The driver app calls this every few seconds: it keeps him on the map and available for offers."""
+    if payload.vehicle_type not in VEHICLE_CAPACITY:
+        raise HTTPException(status_code=400, detail="vehicle_type must be cab, auto or bike")
+    d = state.current.dispatcher.set_location(
+        payload.driver_id, payload.name, payload.vehicle_type, payload.latitude, payload.longitude)
+    return {"driver_id": d.id, "is_busy": d.is_busy}
+
+@router.post("/drivers/offline")
+async def driver_offline(payload: DriverOfflineRequest):
+    if state.current.rides.ride_of_driver(payload.driver_id) is not None:
+        raise HTTPException(status_code=400, detail="Finish your current ride first")
+    state.current.dispatcher.go_offline(payload.driver_id)
+    return {"offline": True}
+
+@router.get("/drivers/{driver_id}/ride")
+async def driver_current_ride(driver_id: str):
+    """The ride this driver should be looking at (offer, trip to pickup, or trip to drop), or null."""
+    svc = state.current.rides
+    ride = svc.ride_of_driver(driver_id)
+    if ride is None:
+        return None
+    room = svc.rooms_by_id.get(ride.room_id)
+    names = [m[0].name for m in room.members]
+    left = None
+    if ride.status == "offered":
+        left = max(0, int(OFFER_SECONDS - (time.time() - ride.offered_at)))
+    return {
+        "ride_id": ride.ride_id,
+        "status": ride.status,
+        "vehicle_type": ride.vehicle_type,
+        "pickup": ride.pickup,
+        "drop": ride.drop,
+        "km": ride.km,
+        "riders": len(ride.rider_ids),
+        "rider_names": names,
+        "total_fare": vehicle_fare(ride.vehicle_type, ride.km),
+        "fare_each": ride.exact_share,
+        "seconds_left": left,
+    }
+
+@router.post("/rides/driver/accept")
+async def driver_accept(payload: DriverAnswerRequest):
+    try:
+        ride = state.current.rides.driver_accept(payload.ride_id, payload.driver_id)
+        try:
+            state.current.repo.save_ride(ride)
+        except Exception as e:
+            print(f"Warning: Storage error: {e}")
+        return {"ride_id": ride.ride_id, "status": ride.status}
+    except KeyError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@router.post("/rides/driver/reject")
+async def driver_reject(payload: DriverAnswerRequest):
+    try:
+        state.current.rides.driver_reject(payload.ride_id, payload.driver_id)
+        return {"rejected": True}
     except KeyError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except ValueError as e:
