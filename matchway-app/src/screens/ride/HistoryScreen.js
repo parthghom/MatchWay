@@ -1,7 +1,11 @@
-// "History" tab: the rides you have completed.
-import React, { useEffect, useState } from 'react';
+// "History" tab: the rides you have completed, newest first.
+// The list comes from the backend, where every person's trips are kept in our own Stack
+// (GET /history/rider/<id> or /history/driver/<id>). If the server can not be reached, a rider
+// still sees the copy saved on this phone.
+import React, { useCallback, useEffect, useState } from 'react';
 import { View, Text, FlatList, StyleSheet, StatusBar } from 'react-native';
 import { C } from '../../theme';
+import { api } from '../../api';
 import { loadHistory } from '../../history';
 import { StarRow } from '../../components/RatingCard';
 
@@ -17,16 +21,38 @@ function when(iso) {
   return `${d.getDate()} ${MONTHS[d.getMonth()]} · ${h}:${String(d.getMinutes()).padStart(2, '0')} ${ap}`;
 }
 
-export default function HistoryScreen() {
+export default function HistoryScreen({ title = 'Ride history', userId, driver = false }) {
   const [rides, setRides] = useState(null);
+  const [refreshing, setRefreshing] = useState(false);
 
-  useEffect(() => { loadHistory().then(setRides); }, []);
+  const load = useCallback(async () => {
+    if (userId) {
+      try {
+        const res = await api.get(`/history/${driver ? 'driver' : 'rider'}/${userId}`);
+        setRides(res.data.trips || []);
+        return;
+      } catch (e) {
+        // server not reachable: fall through to the copy on this phone
+      }
+    }
+    setRides(driver ? [] : await loadHistory());
+  }, [userId, driver]);
+
+  useEffect(() => { load(); }, [load]);
+
+  async function refresh() {
+    setRefreshing(true);
+    await load();
+    setRefreshing(false);
+  }
 
   return (
     <View style={s.screen}>
-      <Text style={s.title}>Ride history</Text>
+      <Text style={s.title}>{title}</Text>
       <FlatList
         data={rides || []}
+        refreshing={refreshing}
+        onRefresh={refresh}
         keyExtractor={(r) => r.id}
         contentContainerStyle={{ paddingBottom: 20, flexGrow: 1 }}
         ListEmptyComponent={
@@ -55,9 +81,12 @@ export default function HistoryScreen() {
                 <Text style={s.place} numberOfLines={1}>{r.drop}</Text>
               </View>
               <Text style={s.meta}>
-                {v[0]} {v[1]} · {r.km} km · {r.riders > 1 ? `shared with ${r.riders - 1}` : 'solo'}
+                {driver
+                  ? `${v[0]} ${v[1]} · ${r.km} km · ${r.riders} ${r.riders === 1 ? 'rider' : 'riders'} · total fare`
+                  : `${v[0]} ${v[1]} · ${r.km} km · ${r.riders > 1 ? `shared with ${r.riders - 1}` : 'solo'}`}
               </Text>
 
+              {!driver && (
               <View style={s.rateBox}>
                 <Text style={s.rateTitle}>Your ratings</Text>
                 {r.ratings && (r.ratings.driver || (r.ratings.riders && r.ratings.riders.length > 0)) ? (
@@ -79,6 +108,7 @@ export default function HistoryScreen() {
                   <Text style={s.rateNone}>You did not rate this ride.</Text>
                 )}
               </View>
+              )}
             </View>
           );
         }}

@@ -211,6 +211,7 @@ export default function BookRide({ gender, busy, onBook, onProfile, onStage, vis
         spots={stage === 'home' || stage === 'pick' ? spots : null}
         route={stage === 'options' && info ? info.points : null}
         fitPad={FIT_PAD}
+        pin={stage === 'pick'}
         onMoved={onMoved}
         onMoveStart={() => setMoving(true)}
         visible={visible}
@@ -240,15 +241,6 @@ export default function BookRide({ gender, busy, onBook, onProfile, onStage, vis
           </>
         )}
 
-        {stage === 'pick' && (
-          <View pointerEvents="none" style={s.pinWrap}>
-            <View style={[s.pinHead, moving && { transform: [{ translateY: -10 }] }]}>
-              <View style={s.pinDot} />
-            </View>
-            <View style={s.pinStem} />
-            <View style={s.pinShadow} />
-          </View>
-        )}
       {/* PICK ON MAP */}
       {stage === 'pick' && (
         <>
@@ -379,6 +371,7 @@ export default function BookRide({ gender, busy, onBook, onProfile, onStage, vis
           onBack={() => setStage('home')}
           onSelect={selectDrop}
           pickup={customPickup}
+          onSelectPickup={setCustomPickup}
           onPickOnMap={startPick}
         />
       )}

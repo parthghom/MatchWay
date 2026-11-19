@@ -1,12 +1,13 @@
-import os
 from supabase import create_client, Client
+from app.storage.profile_repo import get_setting
 from app.models.driver import Driver
 from app.models.rider import Rider
 
 class SupabaseRepository:
     def __init__(self):
-        url = os.environ.get("SUPABASE_URL")
-        key = os.environ.get("SUPABASE_KEY")
+        url = get_setting("SUPABASE_URL")
+        # the server's own key (it bypasses row-level security, which protects trip_history)
+        key = get_setting("SUPABASE_SERVICE_KEY") or get_setting("SUPABASE_KEY")
         self.client: Client = create_client(url, key)
 
     def save_driver(self, driver):
@@ -55,6 +56,18 @@ class SupabaseRepository:
         except Exception:
             res = self.client.table("reviews").select("*").execute()
         return res.data
+
+    def save_trip(self, role, user_id, trip):
+        data = {"role": role, "user_id": user_id, "trip_id": trip["id"], "trip": trip}
+        self.client.table("trip_history").upsert(data, on_conflict="role,user_id,trip_id").execute()
+
+    def load_trips(self):
+        """Every saved trip, oldest first, so pushing them onto the stacks in order leaves the newest on top."""
+        try:
+            res = self.client.table("trip_history").select("*").order("created_at").execute()
+        except Exception:
+            res = self.client.table("trip_history").select("*").execute()
+        return [{"role": r["role"], "user_id": r["user_id"], "trip": r["trip"]} for r in res.data]
 
     def load_drivers(self):
         res = self.client.table("drivers").select("*").execute()

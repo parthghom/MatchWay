@@ -15,7 +15,7 @@ Pickup to Campus using nearby "virtual spots".
 Rules:
 - Do not add any other framework, database or library without asking me first.
 - Write every data structure by hand as our own class in plain Python:
-  HashMap, Queue, MinHeap, KDTree, IntervalTree, Trie, BipartiteGraph.
+  HashMap, Queue, MinHeap, KDTree, IntervalTree, Trie, BipartiteGraph, Stack.
 - Do NOT use heapq, collections.deque, bisect, scipy, networkx, sklearn
   or any similar library or module for them.
 - Put each data structure in its own file in matchway-backend/app/engine/.
@@ -25,7 +25,7 @@ Rules:
 ## Data structures (Python backend)
 Hash map (rooms, driver state), Queue (drivers at spot), Min-heap (nearest driver),
 KD-tree (200 m radius search), Interval tree (time windows), Trie (route matching),
-Bipartite graph (driver-rider filtering).
+Bipartite graph (driver-rider filtering), Stack (ride history, newest first).
 
 ## Working rules
 Work only inside this folder. Build one small piece at a time and run it after each step.

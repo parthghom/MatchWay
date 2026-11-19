@@ -75,3 +75,53 @@ def test_finished_ride_shows_in_driver_and_rider_history_via_api():
     assert len(drv) == 1 and drv[0]["fare"] == 200.0 and drv[0]["riders"] == 1
     assert client.get("/history/driver/nobody").json() == {"trips": []}
     assert client.get("/history/admin/x").status_code == 404
+
+
+def _finish_one_ride(user="user-9", driver="drv-9"):
+    client.post("/drivers/location", json={"driver_id": driver, "name": "Raj", "vehicle_type": "cab",
+                                           "latitude": 18.5005, "longitude": 73.8005})
+    room = client.post("/rides/request", json={
+        "rider": {"id": "r9", "name": "Asha", "gender": "female", "preference": "mix"},
+        "request": {"id": "qr9", "rider_id": "r9", "flow": "campus_to_destination", "destination": "Mall",
+                    "vehicle_type": "cab", "time_window_start": 600, "time_window_end": 660},
+        "route": ["Gate", "Mall"], "pickup_lat": 18.5, "pickup_lon": 73.8, "km": 8.0,
+        "pickup_name": "College Gate", "drop_lat": 18.55, "drop_lon": 73.9, "drop_name": "Mall", "user_id": user,
+    }).json()["room_id"]
+    client.post("/rooms/continue", json={"rider_id": "r9"})
+    client.post("/rides/confirm", json={"room_id": room})
+    ride_id = client.get(f"/drivers/{driver}/ride").json()["ride_id"]
+    client.post("/rides/driver/accept", json={"ride_id": ride_id, "driver_id": driver})
+    otp = client.post("/rides/confirm", json={"room_id": room}).json()["otp"]
+    client.post("/rides/start", json={"ride_id": ride_id, "otp": otp})
+    client.post("/rides/complete", json={"ride_id": ride_id})
+    return ride_id
+
+
+def test_stars_you_gave_show_up_in_your_history():
+    ride_id = _finish_one_ride()
+    import app.auth as auth
+    old = auth.verifier
+    auth.verifier = lambda token: auth.AuthUser("user-9", "a@vit.edu")   # pretend user-9 is signed in
+    try:
+        r = _review(ride_id)
+    finally:
+        auth.verifier = old
+    assert r.status_code == 200, r.text
+    trip = client.get("/history/rider/user-9").json()["trips"][0]
+    assert trip["ratings"]["driver"]["stars"] == 4 and trip["ratings"]["riders"] == []
+
+
+def _review(ride_id):
+    return client.post("/rides/review", headers={"Authorization": "Bearer x"},
+                       json={"ride_id": ride_id, "reviewer_id": "r9", "target_id": "drv-9", "stars": 4})
+
+
+def test_history_comes_back_after_a_restart():
+    from app.storage.memory_repo import MemoryRepository
+    repo = MemoryRepository()
+    state.reset(repo=repo)
+    _finish_one_ride()
+    assert len(client.get("/history/rider/user-9").json()["trips"]) == 1
+    state.reset(repo=repo)               # the server restarts with the same saved data
+    assert len(client.get("/history/rider/user-9").json()["trips"]) == 1
+    assert len(client.get("/history/driver/drv-9").json()["trips"]) == 1

@@ -282,6 +282,13 @@ async def complete_ride(payload: CompleteRideRequest):
         except Exception as e:
             print(f"Warning: Storage error: {e}")
 
+        # keep the finished trip (it is already on the history stacks) so it survives a restart
+        for role, user_id, trip in state.current.rides.rides.get(payload.ride_id).new_history:
+            try:
+                state.current.repo.save_trip(role, user_id, trip)
+            except Exception as e:
+                print(f"Warning: Storage error: {e}")
+
         payments = [{"rider_id": r_id, "amount": amt} for r_id, amt in payments_list]
         return {
             "ride_id": payload.ride_id,
@@ -316,12 +323,26 @@ async def submit_review(payload: ReviewRequest, authorization: str = Header(None
                 state.current.repo.save_rider(target_record.rider)
         except Exception as e:
             print(f"Warning: Storage error: {e}")
+        try:
+            # the stars you gave are part of that ride in your history
+            if result["history_trip"] is not None:
+                state.current.repo.save_trip("rider", result["history_user"], result["history_trip"])
+        except Exception as e:
+            print(f"Warning: Storage error: {e}")
 
         return {"ok": True, "target_score": result["score"], "target_count": result["count"], "role": result["role"]}
     except KeyError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+@router.get("/history/{role}/{user_id}")
+async def trip_history(role: str, user_id: str, limit: int = 50):
+    """Finished trips of a rider or a driver, newest first. We read them straight off that
+    person's Stack: the top of the stack is the latest trip."""
+    if role not in ("rider", "driver"):
+        raise HTTPException(status_code=404, detail="role must be rider or driver")
+    return {"trips": state.current.rides.history.get(role, user_id, max(1, min(limit, 50)))}
 
 @router.get("/ratings/me")
 async def my_rating(user=Depends(get_current_user)):

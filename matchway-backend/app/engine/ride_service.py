@@ -13,6 +13,8 @@
 #    target's EMA rating. Ratings belong to the PERSON (user id), so they live on across rides, show
 #    on the profile, and steer matching: riders are grouped with similarly well-rated riders, and
 #    well-rated drivers are preferred when a driver is chosen.
+# 10. history: when a ride completes it is pushed onto the Stack of every rider and of the driver
+#    (see trip_history.py), so the history screens show the newest trip first.
 
 import math
 import time
@@ -23,7 +25,8 @@ from app.engine.matching_engine import MatchingEngine
 from app.engine.driver_dispatch import DriverDispatcher
 from app.engine.reviews import ReviewService
 from app.engine.otp import OTPService
-from app.engine.fare import approximate_fare_range, exact_fare, split_payment
+from app.engine.fare import approximate_fare_range, exact_fare, split_payment, vehicle_fare
+from app.engine.trip_history import TripHistory, now_iso
 
 
 GROUP_ACCEPT_SECONDS = 15   # everybody in a full group must accept within this time
@@ -55,6 +58,7 @@ class Ride:
         self.offered_at = None
         self.payments = None           # filled when the ride completes
         self.riders = []               # [{"rider_id", "name"}]: who was on board (kept after the room is gone)
+        self.new_history = []          # history entries added when the ride completed (so they can be saved)
 
 class RiderRecord:
     def __init__(self, rider, request, pickup_lat, pickup_lon, km,
@@ -91,6 +95,7 @@ class RideService:
         self.full_since = HashMap()      # room_id -> time the room became full
         self.declined = HashMap()        # "room_id|driver_id" -> time the driver declined
         self.review_tracker = HashMap()  # "ride|reviewer|target" -> True (one review per pair per ride)
+        self.history = TripHistory()     # one Stack of finished trips per rider and per driver
 
     # ---- identity and ratings ----------------------------------------------
     def identity(self, rider_id):
@@ -426,7 +431,70 @@ class RideService:
                 self.room_manager.remove(rider_id, record.request)
 
         ride.payments = split_payment(ride.vehicle_type, ride.km, ride.rider_ids)
+        ride.new_history = self._record_history(ride)
         return ride.payments
+
+    def _record_history(self, ride):
+        """Pushes the finished ride onto the stack of each rider and of the driver.
+        Returns [(role, user_id, trip)] for the entries that were really added, so they can be saved."""
+        added = []
+        date = now_iso()
+        stamp = int(time.time() * 1000)   # ride numbers restart with the server, so make the id unique
+        pays = {}
+        for rid, amount in ride.payments:
+            pays[rid] = amount
+
+        for rider_id in ride.rider_ids:
+            record = self.riders.get(rider_id) if self.riders.contains(rider_id) else None
+            user_id = self.identity(rider_id)
+            trip = {
+                "id": f"{ride.ride_id}-{stamp}",
+                "ride_id": ride.ride_id,
+                "pickup": (record.pickup_name if record and record.pickup_name else None) or (ride.pickup or {}).get("name") or "Pickup",
+                "drop": (record.drop_name if record and record.drop_name else None) or (ride.drop or {}).get("name") or "Drop",
+                "vehicle": ride.vehicle_type,
+                "fare": pays.get(rider_id, ride.exact_share),
+                "km": record.km if record else ride.km,
+                "riders": len(ride.rider_ids),
+                "date": date,
+                "ratings": None,
+            }
+            if self.history.record("rider", user_id, trip):
+                added.append(("rider", user_id, trip))
+
+        driver_trip = {
+            "id": f"{ride.ride_id}-{stamp}",
+            "ride_id": ride.ride_id,
+            "pickup": (ride.pickup or {}).get("name") or "Pickup",
+            "drop": (ride.drop or {}).get("name") or "Drop",
+            "vehicle": ride.vehicle_type,
+            "fare": vehicle_fare(ride.vehicle_type, ride.km),
+            "km": ride.km,
+            "riders": len(ride.rider_ids),
+            "date": date,
+        }
+        if self.history.record("driver", ride.driver_id, driver_trip):
+            added.append(("driver", ride.driver_id, driver_trip))
+        return added
+
+    def _remember_rating(self, ride, reviewer_id, target_id, stars, is_driver):
+        """Writes the stars a rider gave into that rider's own history entry for this ride."""
+        user_id = self.identity(reviewer_id)
+        for trip in self.history.get("rider", user_id):
+            if trip.get("ride_id") != ride.ride_id:
+                continue
+            ratings = trip.get("ratings") or {"driver": None, "riders": []}
+            if is_driver:
+                ratings["driver"] = {"name": ride.driver_name or "Driver", "stars": stars}
+            else:
+                name = "Co-passenger"
+                for p in ride.riders:
+                    if p["rider_id"] == target_id:
+                        name = p["name"] or name
+                ratings["riders"].append({"name": name, "stars": stars})
+            trip["ratings"] = ratings
+            return user_id, trip
+        return None, None
 
     def submit_review(self, ride_id, reviewer_id, target_id, stars):
         """A rider rates the driver or one co-passenger after the ride.
@@ -462,8 +530,12 @@ class RideService:
                 # keep the Rider object (used to sort matches) in step with the EMA score
                 record.rider.compatibility_score = self.reviews.get_score(target_identity)
 
+        history_user, history_trip = self._remember_rating(ride, reviewer_id, target_id, stars, is_driver)
+
         summary = self.reviews.summary(target_identity)
         return {
+            "history_user": history_user,
+            "history_trip": history_trip,
             "role": "driver" if is_driver else "rider",
             "reviewer_identity": reviewer_identity,
             "target_identity": target_identity,

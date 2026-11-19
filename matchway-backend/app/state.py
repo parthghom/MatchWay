@@ -45,6 +45,13 @@ class AppState:
         except Exception as e:
             print(f"Warning: Could not load reviews: {e}")
 
+        # Refill every person's history Stack from the saved trips (oldest first, newest ends on top).
+        try:
+            for row in self.repo.load_trips():
+                self.rides.history.record(row["role"], row["user_id"], row["trip"])
+        except Exception as e:
+            print(f"Warning: Could not load trip history: {e}")
+
 current = AppState()
 
 def reset(repo=None):

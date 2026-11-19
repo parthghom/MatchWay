@@ -1,6 +1,6 @@
-// Drop search, laid out like Rapido:
-//   pickup box (your current address)  +  drop box (cursor here)
-//   "Map" button to pick the drop on the map
+// Pickup + drop search, laid out like Rapido:
+//   pickup box (your current address, tap it to search another pickup)  +  drop box (cursor here)
+//   target button on each box to pick that place on the map
 //   recent places, or related places (nearest first) while you type.
 // Results come from our backend (Ola Maps autocomplete), limited to RADIUS_KM.
 import React, { useEffect, useRef, useState } from 'react';
@@ -19,14 +19,22 @@ function kmText(m) {
   return m < 1000 ? `${Math.round(m)} m` : `${(m / 1000).toFixed(1)} km`;
 }
 
-export default function SearchScreen({ user, pickup, recents, onBack, onSelect, onPickOnMap }) {
+export default function SearchScreen({ user, pickup, recents, onBack, onSelect, onSelectPickup, onPickOnMap }) {
   const [text, setText] = useState('');
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [opening, setOpening] = useState(false);
   const [pickupName, setPickupName] = useState('Current location');
+  const [active, setActive] = useState('drop');        // which box you are typing in: 'pickup' or 'drop'
+  const [pickupText, setPickupText] = useState('');
   const seq = useRef(0);
+  const dropInput = useRef(null);
+  const pickupLabel = pickup ? (pickup.address || pickup.name) : pickupName;
+
+  // when you are not typing a pickup, its box shows the current pickup address
+  useEffect(() => { if (active !== 'pickup') setPickupText(pickupLabel); }, [pickupLabel, active]);
+  const query = active === 'pickup' ? pickupText : text;
 
   // your current address goes in the pickup box
   useEffect(() => {
@@ -37,8 +45,8 @@ export default function SearchScreen({ user, pickup, recents, onBack, onSelect, 
   }, [user, pickup]);
 
   useEffect(() => {
-    const q = text.trim();
-    if (q.length < 2) {
+    const q = query.trim();
+    if (q.length < 2 || (active === 'pickup' && q === pickupLabel.trim())) {
       setResults([]); setError(''); setLoading(false);
       return undefined;
     }
@@ -65,7 +73,7 @@ export default function SearchScreen({ user, pickup, recents, onBack, onSelect, 
       }
     }, 300);
     return () => clearTimeout(t);
-  }, [text, user]);
+  }, [query, user, active, pickupLabel]);
 
   async function choose(p) {
     if (opening) return;
@@ -86,10 +94,23 @@ export default function SearchScreen({ user, pickup, recents, onBack, onSelect, 
       Alert.alert('Too far', `Pick a place within ${RADIUS_KM} km of you.`);
       return;
     }
-    onSelect({ name: place.name, address: place.address, lat: place.lat, lon: place.lon });
+    const chosen = { name: place.name, address: place.address, lat: place.lat, lon: place.lon };
+    if (active === 'pickup') {
+      onSelectPickup(chosen);          // new pickup: stay here and go on to the drop box
+      setActive('drop'); setResults([]);
+      setTimeout(() => dropInput.current && dropInput.current.focus(), 50);
+      return;
+    }
+    onSelect(chosen);
   }
 
-  const typing = text.trim().length >= 2;
+  function useCurrentLocation() {
+    onSelectPickup(null);
+    setActive('drop'); setResults([]);
+    setTimeout(() => dropInput.current && dropInput.current.focus(), 50);
+  }
+
+  const typing = query.trim().length >= 2 && !(active === 'pickup' && query.trim() === pickupLabel.trim());
   const data = typing ? results : recents;
 
   return (
@@ -105,24 +126,36 @@ export default function SearchScreen({ user, pickup, recents, onBack, onSelect, 
           <View style={s.dotDrop} />
         </View>
         <View style={{ flex: 1 }}>
-          <View style={s.pickup}>
-            <Text style={s.pickupText} numberOfLines={1}>{pickup ? (pickup.address || pickup.name) : pickupName}</Text>
+          <View style={[s.pickup, active === 'pickup' && s.boxOn]}>
+            <TextInput
+              value={pickupText}
+              onChangeText={setPickupText}
+              onFocus={() => setActive('pickup')}
+              selectTextOnFocus
+              placeholder="Pickup location"
+              placeholderTextColor={C.muted}
+              style={[s.pickupText, active === 'pickup' && { color: C.text }]}
+              returnKeyType="search"
+            />
+            {active === 'pickup' && loading && <ActivityIndicator color={C.yellow} size="small" />}
             <TouchableOpacity style={s.mapIcon} onPress={() => onPickOnMap('pickup')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
               <TargetIcon size={20} />
             </TouchableOpacity>
           </View>
-          <View style={s.dropBox}>
+          <View style={[s.dropBox, active !== 'drop' && s.dropOff]}>
             <TextInput
+              ref={dropInput}
               autoFocus
               value={text}
               onChangeText={setText}
+              onFocus={() => setActive('drop')}
               placeholder="Drop location"
               placeholderTextColor={C.muted}
               style={s.input}
               returnKeyType="search"
             />
-            {(loading || opening) && <ActivityIndicator color={C.yellow} size="small" />}
-            {text.length > 0 && !loading && !opening && (
+            {((active === 'drop' && loading) || opening) && <ActivityIndicator color={C.yellow} size="small" />}
+            {text.length > 0 && !(active === 'drop' && loading) && !opening && (
               <TouchableOpacity onPress={() => setText('')}><Text style={s.clear}>✕</Text></TouchableOpacity>
             )}
             <TouchableOpacity style={s.mapIcon} onPress={() => onPickOnMap('drop')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
@@ -140,9 +173,20 @@ export default function SearchScreen({ user, pickup, recents, onBack, onSelect, 
         keyboardShouldPersistTaps="handled"
         keyExtractor={(p, i) => `${p.place_id || p.lat + ',' + p.lon}-${i}`}
         ListHeaderComponent={
+          <>
+          {active === 'pickup' && !typing && (
+            <TouchableOpacity style={s.row} onPress={useCurrentLocation} activeOpacity={0.7}>
+              <View style={s.iconCol}><TargetIcon size={22} /></View>
+              <View style={{ flex: 1 }}>
+                <Text style={s.name}>Use my current location</Text>
+                <Text style={s.addr} numberOfLines={1}>Pick me up where I am now</Text>
+              </View>
+            </TouchableOpacity>
+          )}
           <Text style={s.section}>
             {typing ? `Places within ${RADIUS_KM} km` : 'Recent places'}
           </Text>
+          </>
         }
         ListEmptyComponent={
           <Text style={s.empty}>
@@ -177,7 +221,9 @@ const s = StyleSheet.create({
   dotDrop: { width: 12, height: 12, backgroundColor: C.yellow },
 
   pickup: { height: 46, flexDirection: 'row', alignItems: 'center', backgroundColor: C.card, borderRadius: 12, paddingHorizontal: 14, marginBottom: 10 },
-  pickupText: { flex: 1, color: C.muted, fontSize: 15 },
+  pickupText: { flex: 1, color: C.muted, fontSize: 15, paddingVertical: 0 },
+  boxOn: { borderWidth: 1.5, borderColor: C.yellow },
+  dropOff: { borderWidth: 1, borderColor: C.line },
   mapIcon: { width: 32, height: 32, alignItems: 'center', justifyContent: 'center', marginLeft: 6 },
   dropBox: {
     height: 48, flexDirection: 'row', alignItems: 'center', borderRadius: 12, paddingHorizontal: 14,

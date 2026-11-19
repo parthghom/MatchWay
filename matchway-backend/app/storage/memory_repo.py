@@ -8,6 +8,7 @@ class MemoryRepository:
         self.riders = {}    # id -> Rider
         self.rides = {}     # ride_id -> Ride (generic object)
         self.reviews = []   # list of dicts
+        self.trips = {}     # "role|user_id|trip_id" -> {"role", "user_id", "trip"} (kept in the order they were first saved)
 
     def save_driver(self, driver):
         self.drivers[driver.id] = driver
@@ -33,6 +34,13 @@ class MemoryRepository:
     def load_reviews(self):
         """All saved reviews, oldest first. The server replays them at start-up to rebuild every EMA score."""
         return list(self.reviews)
+
+    def save_trip(self, role, user_id, trip):
+        self.trips[f"{role}|{user_id}|{trip['id']}"] = {"role": role, "user_id": user_id, "trip": trip}
+
+    def load_trips(self):
+        """Every saved trip, oldest first, so pushing them onto the stacks in order leaves the newest on top."""
+        return list(self.trips.values())
 
     def load_drivers(self):
         return list(self.drivers.values())
