@@ -141,12 +141,12 @@ export function buildHtml(api) {
 }
 
 const OlaMap = forwardRef(function OlaMap(
-  { user, userIcon, route, pickup, drop, spots, visible = true, fitPad, onMoved, onMoveStart, style, children },
+  { user, userIcon, route, pickup, drop, spots, visible = true, fitPad, noCenter, onMoved, onMoveStart, style, children },
   ref
 ) {
   const web = useRef(null);
   const loaded = useRef(false);
-  const centered = useRef(false);
+  const centered = useRef(!!noCenter);   // noCenter: the screen fits a route, do not fly to the dot
   const [key, setKey] = useState(0);
   const [failed, setFailed] = useState(false);
 

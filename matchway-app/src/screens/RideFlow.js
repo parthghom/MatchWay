@@ -64,6 +64,8 @@ export default function RideFlow({ profile, email, onSignOut }) {
   const [result, setResult] = useState(null);
   const [ride, setRide] = useState(null);
   const [started, setStarted] = useState(false);
+  const [driverPos, setDriverPos] = useState(null);   // where the driver's vehicle is right now
+  const [picked, setPicked] = useState(0);            // stars tapped, sent only when he presses Submit
   const [payments, setPayments] = useState([]);
   const [rating, setRating] = useState(0);
 
@@ -121,9 +123,10 @@ export default function RideFlow({ profile, email, onSignOut }) {
         const res = await api.get(`/rides/${ride.ride_id}`);
         if (!alive) return;
         setStarted(res.data.status === 'in_progress');
+        if (res.data.driver_lat != null) setDriverPos({ lat: res.data.driver_lat, lon: res.data.driver_lon });
         if (res.data.status === 'completed') {
           const pays = res.data.payments || [];
-          setPayments(pays); setRating(0); setStep('done');
+          setPayments(pays); setRating(0); setPicked(0); setStep('done');
           const mine = pays.find((p) => p.rider_id === riderId);
           if (trip) {
             saveRideToHistory({
@@ -151,7 +154,7 @@ export default function RideFlow({ profile, email, onSignOut }) {
 
   function reset() {
     setStep('request'); setResult(null); setRide(null); setTrip(null);
-    setPayments([]); setRating(0); setStarted(false);
+    setPayments([]); setRating(0); setPicked(0); setStarted(false); setDriverPos(null);
   }
 
   if (step === 'request') {
@@ -208,7 +211,7 @@ export default function RideFlow({ profile, email, onSignOut }) {
   }
 
   if (step === 'ride' && ride && trip) {
-    return <RideTripScreen ride={ride} trip={trip} started={started} />;
+    return <RideTripScreen ride={ride} trip={trip} started={started} driverPos={driverPos} vehicle={vehicle} />;
   }
 
   return (
@@ -228,11 +231,16 @@ export default function RideFlow({ profile, email, onSignOut }) {
               <Text style={s.mute}>Rate your driver</Text>
               <View style={[s.row, { marginTop: 10 }]}>
                 {[1, 2, 3, 4, 5].map((n) => (
-                  <TouchableOpacity key={n} disabled={busy || rating > 0} onPress={() => review(n)}>
-                    <Text style={[s.star, n <= rating && { color: C.yellow }]}>★</Text>
+                  <TouchableOpacity key={n} disabled={busy || rating > 0} onPress={() => setPicked(n)}>
+                    <Text style={[s.star, n <= (rating || picked) && { color: C.yellow }]}>★</Text>
                   </TouchableOpacity>
                 ))}
               </View>
+              {rating === 0 && picked > 0 && (
+                <View style={{ marginTop: 14 }}>
+                  <Btn title="Submit review" onPress={() => review(picked)} loading={busy} />
+                </View>
+              )}
               {rating > 0 && <Text style={s.hint}>Thanks for your review.</Text>}
             </View>
             <Btn title="Book another ride" onPress={reset} />

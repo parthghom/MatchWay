@@ -68,7 +68,7 @@ export function CodeInput({ value, onChange, length }) {
 
   return (
     <View style={s.codeContainer}>
-      <View style={s.boxesRow}>
+      <TouchableOpacity activeOpacity={1} style={s.boxesRow} onPress={() => inputs.current && inputs.current.focus()}>
         {Array.from({ length }).map((_, i) => (
           <View
             key={i}
@@ -80,7 +80,7 @@ export function CodeInput({ value, onChange, length }) {
             <Text style={s.boxText}>{value?.[i] || ''}</Text>
           </View>
         ))}
-      </View>
+      </TouchableOpacity>
       <TextInput
         ref={inputs}
         style={s.hiddenInput}

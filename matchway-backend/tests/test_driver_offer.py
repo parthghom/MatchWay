@@ -104,3 +104,16 @@ def test_rider_can_cancel_while_only_offered():
     assert client.post("/rides/cancel", json={"rider_id": "r1"}).status_code == 200
     assert client.get("/drivers/d1/ride").json() is None
     assert client.get("/drivers/nearby", params={"lat": 18.5, "lon": 73.8, "vehicle_type": "cab"}).json()["count"] == 1
+
+
+def test_riders_see_the_drivers_live_position():
+    online("d1", 18.5005, 73.8005)
+    room = book()
+    client.post("/rides/confirm", json={"room_id": room})
+    ride_id = client.get("/drivers/d1/ride").json()["ride_id"]
+    client.post("/rides/driver/accept", json={"ride_id": ride_id, "driver_id": "d1"})
+    seen = client.get(f"/rides/{ride_id}").json()
+    assert (seen["driver_lat"], seen["driver_lon"]) == (18.5005, 73.8005)
+    online("d1", 18.52, 73.83)                       # the vehicle moves
+    seen = client.get(f"/rides/{ride_id}").json()
+    assert (seen["driver_lat"], seen["driver_lon"]) == (18.52, 73.83)

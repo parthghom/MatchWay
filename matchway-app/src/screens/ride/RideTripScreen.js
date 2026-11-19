@@ -10,7 +10,9 @@ import OlaMap from '../../components/OlaMap';
 const FIT_PAD = { top: 90, bottom: 380, left: 40, right: 40 };
 const rupee = (n) => `₹${Number(n).toFixed(Number.isInteger(Number(n)) ? 0 : 2)}`;
 
-export default function RideTripScreen({ ride, trip, started }) {
+const VEHICLE_ICON = { bike: '🏍️', auto: '🛺', cab: '🚕' };
+
+export default function RideTripScreen({ ride, trip, started, driverPos, vehicle }) {
   const [route, setRoute] = useState(null);
 
   // the line from pickup to drop
@@ -34,6 +36,9 @@ export default function RideTripScreen({ ride, trip, started }) {
         pickup={trip.pickup}
         drop={trip.drop}
         route={route}
+        user={driverPos}
+        userIcon={VEHICLE_ICON[vehicle]}
+        noCenter
         fitPad={FIT_PAD}
         style={StyleSheet.absoluteFillObject}
       />

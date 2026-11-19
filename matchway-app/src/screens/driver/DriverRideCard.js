@@ -122,7 +122,7 @@ export default function DriverRideCard({ top, ride, busy, error, earned, onDismi
             <Text style={s.sub}>Ask the rider for the 4-digit OTP shown on their phone</Text>
             <CodeInput value={otp} onChange={setOtp} length={4} />
             {!!error && <Text style={s.error}>{error}</Text>}
-            <Button title="Start ride" onPress={() => onStart(otp)} loading={busy} disabled={otp.length < 4} />
+            <Button title="Start ride" onPress={async () => { const r = await onStart(otp); if (r === null) setOtp(''); }} loading={busy} disabled={otp.length < 4} />
           </View>
         )}
       </View>

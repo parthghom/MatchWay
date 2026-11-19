@@ -160,7 +160,11 @@ async def confirm_ride(payload: ConfirmRequest):
         raise HTTPException(status_code=400, detail=str(e))
 
 def _ride_for_rider(ride):
+    dispatcher = state.current.dispatcher
+    here = dispatcher.drivers.get(ride.driver_id) if dispatcher.drivers.contains(ride.driver_id) else None
     return {
+        "driver_lat": here.latitude if here else None,
+        "driver_lon": here.longitude if here else None,
         "ride_id": ride.ride_id,
         "driver_id": ride.driver_id,
         "driver_name": ride.driver_name,
