@@ -22,3 +22,25 @@ export async function saveRideToHistory(ride) {
   } catch (e) {}
   return next;
 }
+
+// ---- the driver's finished trips (kept on the driver's phone) ----
+const DRIVER_KEY = 'matchway_driver_history';
+
+export async function loadDriverHistory() {
+  try {
+    const raw = await AsyncStorage.getItem(DRIVER_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch (e) {
+    return [];
+  }
+}
+
+// trip = { id, pickup, drop, vehicle, fare (total for the trip), km, riders, date }
+export async function saveDriverTrip(trip) {
+  const old = await loadDriverHistory();
+  const next = [trip, ...old.filter((r) => r.id !== trip.id)].slice(0, MAX);
+  try {
+    await AsyncStorage.setItem(DRIVER_KEY, JSON.stringify(next));
+  } catch (e) {}
+  return next;
+}

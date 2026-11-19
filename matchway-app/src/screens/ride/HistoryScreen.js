@@ -16,14 +16,14 @@ function when(iso) {
   return `${d.getDate()} ${MONTHS[d.getMonth()]} · ${h}:${String(d.getMinutes()).padStart(2, '0')} ${ap}`;
 }
 
-export default function HistoryScreen() {
+export default function HistoryScreen({ title = 'Ride history', load = loadHistory, driver = false }) {
   const [rides, setRides] = useState(null);
 
-  useEffect(() => { loadHistory().then(setRides); }, []);
+  useEffect(() => { load().then(setRides); }, [load]);
 
   return (
     <View style={s.screen}>
-      <Text style={s.title}>Ride history</Text>
+      <Text style={s.title}>{title}</Text>
       <FlatList
         data={rides || []}
         keyExtractor={(r) => r.id}
@@ -31,8 +31,8 @@ export default function HistoryScreen() {
         ListEmptyComponent={
           rides ? (
             <View style={s.emptyBox}>
-              <Text style={s.emptyTitle}>No completed rides yet</Text>
-              <Text style={s.emptyText}>Rides you finish will show up here.</Text>
+              <Text style={s.emptyTitle}>{driver ? 'No completed trips yet' : 'No completed rides yet'}</Text>
+              <Text style={s.emptyText}>{driver ? 'Trips you finish will show up here.' : 'Rides you finish will show up here.'}</Text>
             </View>
           ) : null
         }
@@ -54,7 +54,7 @@ export default function HistoryScreen() {
                 <Text style={s.place} numberOfLines={1}>{r.drop}</Text>
               </View>
               <Text style={s.meta}>
-                {v[0]} {v[1]} · {r.km} km · {r.riders > 1 ? `shared with ${r.riders - 1}` : 'solo'}
+                {v[0]} {v[1]} · {Number(r.km).toFixed(1)} km · {driver ? `${r.riders} ${r.riders > 1 ? 'riders' : 'rider'}` : (r.riders > 1 ? `shared with ${r.riders - 1}` : 'solo')}
               </Text>
             </View>
           );

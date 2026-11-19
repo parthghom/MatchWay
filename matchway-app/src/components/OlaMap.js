@@ -34,8 +34,15 @@ export function buildHtml(api) {
   .spot .lbl { color: #fff; font-weight: 600; }
   .far .spot .lbl { display: none; }
   .drop { width: 18px; height: 18px; background: #FFC800; border: 3px solid #0B0B0B; box-shadow: 0 0 0 2px #FFC800; }
+  #pin { position: fixed; left: 50%; top: 50%; width: 0; height: 0; display: none; z-index: 50; pointer-events: none; }
+  #pin .head { position: absolute; left: -20px; bottom: 16px; width: 34px; height: 34px; border-radius: 20px; background: #FFC800;
+               border: 3px solid #0B0B0B; box-shadow: 0 2px 8px rgba(0,0,0,.6); transition: transform .15s; }
+  #pin .head:after { content: ''; position: absolute; left: 10px; top: 10px; width: 14px; height: 14px; border-radius: 7px; background: #0B0B0B; }
+  #pin .stem { position: absolute; left: -2px; bottom: 0; width: 4px; height: 18px; background: #FFC800; box-shadow: 0 0 0 1px #0B0B0B; transition: transform .15s; }
+  #pin .tip { position: absolute; left: -5px; top: -3px; width: 10px; height: 6px; border-radius: 5px; background: rgba(0,0,0,.6); }
+  #pin.lift .head, #pin.lift .stem { transform: translateY(-12px); }
 </style>
-</head><body><div id="map"></div>
+</head><body><div id="map"></div><div id="pin"><div class="tip"></div><div class="stem"></div><div class="head"></div></div>
 <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
 <script>
 (function () {
@@ -64,6 +71,8 @@ export function buildHtml(api) {
         if (c.icon) uel.textContent = c.icon;
         userMarker = new maplibregl.Marker({ element: uel }).setLngLat(lngLat(c)).addTo(map);
       }
+    } else if (c.t === 'pin') {
+      document.getElementById('pin').style.display = c.on ? 'block' : 'none';
     } else if (c.t === 'fly') {
       map.easeTo({ center: [c.lon, c.lat], zoom: c.zoom || map.getZoom(), duration: c.instant ? 0 : 700 });
     } else if (c.t === 'markers') {
@@ -127,8 +136,9 @@ export function buildHtml(api) {
   function farFlag() { document.body.className = map.getZoom() < 14.5 ? 'far' : ''; }
   map.on('zoom', farFlag);
   map.on('load', farFlag);
-  map.on('movestart', function (e) { if (e.originalEvent) send({ t: 'movestart' }); });
+  map.on('movestart', function (e) { if (e.originalEvent) { document.getElementById('pin').className = 'lift'; send({ t: 'movestart' }); } });
   map.on('moveend', function () {
+    document.getElementById('pin').className = '';
     var c = map.getCenter();
     send({ t: 'moved', lat: c.lat, lon: c.lng });
   });
@@ -141,7 +151,7 @@ export function buildHtml(api) {
 }
 
 const OlaMap = forwardRef(function OlaMap(
-  { user, userIcon, route, pickup, drop, spots, visible = true, fitPad, noCenter, onMoved, onMoveStart, style, children },
+  { user, userIcon, route, pickup, drop, spots, visible = true, fitPad, noCenter, pin, onMoved, onMoveStart, style, children },
   ref
 ) {
   const web = useRef(null);
@@ -180,6 +190,19 @@ const OlaMap = forwardRef(function OlaMap(
     cmd({ t: 'spots', list: spots || [] });
   }, [spots, cmd]);
 
+  // the picker pin, drawn inside the map page so nothing can hide it
+  useEffect(() => {
+    cmd({ t: 'pin', on: !!pin });
+  }, [pin, cmd]);
+
+  // the map changed size (for example from a 1 px hidden map to full screen): re-measure it
+  const sw = style && style.width;
+  const st = style && style.top;
+  const sb = style && style.bottom;
+  useEffect(() => {
+    cmd({ t: 'resize' });
+  }, [sw, st, sb, cmd]);
+
   // the map was hidden (another tab): re-measure it when it comes back
   useEffect(() => {
     if (visible) cmd({ t: 'resize' });
@@ -196,6 +219,7 @@ const OlaMap = forwardRef(function OlaMap(
       cmd({ t: 'markers', pickup: pickup || null, drop: drop || null });
       cmd({ t: 'route', points: route || null, fit: !!route, pad: fitPad });
       cmd({ t: 'spots', list: spots || [] });
+      cmd({ t: 'pin', on: !!pin });
     } else if (m.t === 'moved') {
       onMoved && onMoved({ lat: m.lat, lon: m.lon });
     } else if (m.t === 'movestart') {
