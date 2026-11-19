@@ -69,6 +69,7 @@ async def get_me(user: AuthUser = Depends(get_current_user)):
         "documents": sanitized_docs,
         "vehicle": vehicle,
         "next_step": step,
+        "rating": state.current.rides.rating_summary(user.id),
         "user_id": user.id
     }
 

@@ -2,7 +2,8 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, FlatList, StyleSheet, StatusBar } from 'react-native';
 import { C } from '../../theme';
-import { loadTrips } from '../../history';
+import { loadHistory } from '../../history';
+import { StarRow } from '../../components/RatingCard';
 
 const TOP = (StatusBar.currentHeight || 24) + 16;
 const VEHICLE = { bike: ['🏍️', 'Bike'], auto: ['🛺', 'Auto'], cab: ['🚕', 'Cab'] };
@@ -16,22 +17,14 @@ function when(iso) {
   return `${d.getDate()} ${MONTHS[d.getMonth()]} · ${h}:${String(d.getMinutes()).padStart(2, '0')} ${ap}`;
 }
 
-export default function HistoryScreen({ title = 'Ride history', userId, driver = false }) {
+export default function HistoryScreen() {
   const [rides, setRides] = useState(null);
-  const [failed, setFailed] = useState(false);
 
-  // the backend keeps the history; this asks for it each time the tab opens
-  useEffect(() => {
-    let alive = true;
-    loadTrips(driver ? 'driver' : 'rider', userId)
-      .then((t) => { if (alive) setRides(t); })
-      .catch(() => { if (alive) { setRides([]); setFailed(true); } });
-    return () => { alive = false; };
-  }, [driver, userId]);
+  useEffect(() => { loadHistory().then(setRides); }, []);
 
   return (
     <View style={s.screen}>
-      <Text style={s.title}>{title}</Text>
+      <Text style={s.title}>Ride history</Text>
       <FlatList
         data={rides || []}
         keyExtractor={(r) => r.id}
@@ -39,8 +32,8 @@ export default function HistoryScreen({ title = 'Ride history', userId, driver =
         ListEmptyComponent={
           rides ? (
             <View style={s.emptyBox}>
-              <Text style={s.emptyTitle}>{failed ? 'Could not load history' : driver ? 'No completed trips yet' : 'No completed rides yet'}</Text>
-              <Text style={s.emptyText}>{failed ? 'Check your internet and try again.' : driver ? 'Trips you finish will show up here.' : 'Rides you finish will show up here.'}</Text>
+              <Text style={s.emptyTitle}>No completed rides yet</Text>
+              <Text style={s.emptyText}>Rides you finish will show up here.</Text>
             </View>
           ) : null
         }
@@ -62,8 +55,30 @@ export default function HistoryScreen({ title = 'Ride history', userId, driver =
                 <Text style={s.place} numberOfLines={1}>{r.drop}</Text>
               </View>
               <Text style={s.meta}>
-                {v[0]} {v[1]} · {Number(r.km).toFixed(1)} km · {driver ? `${r.riders} ${r.riders > 1 ? 'riders' : 'rider'}` : (r.riders > 1 ? `shared with ${r.riders - 1}` : 'solo')}
+                {v[0]} {v[1]} · {r.km} km · {r.riders > 1 ? `shared with ${r.riders - 1}` : 'solo'}
               </Text>
+
+              <View style={s.rateBox}>
+                <Text style={s.rateTitle}>Your ratings</Text>
+                {r.ratings && (r.ratings.driver || (r.ratings.riders && r.ratings.riders.length > 0)) ? (
+                  <>
+                    {r.ratings.driver ? (
+                      <View style={s.rateRow}>
+                        <Text style={s.rateWho} numberOfLines={1}>{v[0]} Driver · {r.ratings.driver.name}</Text>
+                        <StarRow value={r.ratings.driver.stars} size={15} />
+                      </View>
+                    ) : null}
+                    {(r.ratings.riders || []).map((p, i) => (
+                      <View key={i} style={s.rateRow}>
+                        <Text style={s.rateWho} numberOfLines={1}>👤 {p.name}</Text>
+                        <StarRow value={p.stars} size={15} />
+                      </View>
+                    ))}
+                  </>
+                ) : (
+                  <Text style={s.rateNone}>You did not rate this ride.</Text>
+                )}
+              </View>
             </View>
           );
         }}
@@ -85,6 +100,11 @@ const s = StyleSheet.create({
   line: { width: 2, height: 14, backgroundColor: C.line, marginLeft: 5, marginVertical: 3 },
   place: { flex: 1, color: C.text, fontSize: 15, fontWeight: '600' },
   meta: { color: C.muted, fontSize: 13, marginTop: 12 },
+  rateBox: { marginTop: 14, paddingTop: 12, borderTopWidth: 1, borderTopColor: C.line },
+  rateTitle: { color: C.muted, fontSize: 12, marginBottom: 8 },
+  rateRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 },
+  rateWho: { color: C.text, fontSize: 14, fontWeight: '600', flex: 1, marginRight: 12 },
+  rateNone: { color: C.muted, fontSize: 13 },
   emptyBox: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingBottom: 80 },
   emptyTitle: { color: C.text, fontSize: 18, fontWeight: '700' },
   emptyText: { color: C.muted, fontSize: 14, marginTop: 6 },

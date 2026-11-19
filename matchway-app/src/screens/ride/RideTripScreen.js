@@ -10,9 +10,7 @@ import OlaMap from '../../components/OlaMap';
 const FIT_PAD = { top: 90, bottom: 380, left: 40, right: 40 };
 const rupee = (n) => `₹${Number(n).toFixed(Number.isInteger(Number(n)) ? 0 : 2)}`;
 
-const VEHICLE_ICON = { bike: '🏍️', auto: '🛺', cab: '🚕' };
-
-export default function RideTripScreen({ ride, trip, started, driverPos, vehicle }) {
+export default function RideTripScreen({ ride, trip, started }) {
   const [route, setRoute] = useState(null);
 
   // the line from pickup to drop
@@ -36,9 +34,6 @@ export default function RideTripScreen({ ride, trip, started, driverPos, vehicle
         pickup={trip.pickup}
         drop={trip.drop}
         route={route}
-        user={driverPos}
-        userIcon={VEHICLE_ICON[vehicle]}
-        noCenter
         fitPad={FIT_PAD}
         style={StyleSheet.absoluteFillObject}
       />
@@ -60,6 +55,11 @@ export default function RideTripScreen({ ride, trip, started, driverPos, vehicle
           <View style={{ flex: 1 }}>
             <Text style={s.mute}>Driver</Text>
             <Text style={s.value} numberOfLines={1}>{ride.driver_name || 'Your driver'}</Text>
+            <Text style={s.driverRating}>
+              {ride.driver_rating && ride.driver_rating.count > 0
+                ? `★ ${ride.driver_rating.score.toFixed(1)} · ${ride.driver_rating.count} review${ride.driver_rating.count === 1 ? '' : 's'}`
+                : 'New driver'}
+            </Text>
           </View>
           <View style={{ alignItems: 'flex-end' }}>
             <Text style={s.mute}>Your fare</Text>
@@ -99,6 +99,7 @@ const s = StyleSheet.create({
   row: { flexDirection: 'row', marginTop: 16, paddingTop: 14, borderTopWidth: 1, borderTopColor: C.line },
   mute: { color: C.muted, fontSize: 12 },
   value: { color: C.text, fontSize: 16, fontWeight: '700', marginTop: 2 },
+  driverRating: { color: C.yellow, fontSize: 12, fontWeight: '700', marginTop: 2 },
   fare: { color: C.yellow, fontSize: 24, fontWeight: '800', marginTop: 2 },
   otpBox: { alignItems: 'center', marginTop: 14, paddingVertical: 12, borderRadius: 14, backgroundColor: C.bg, borderWidth: 1, borderColor: C.line },
   otp: { color: C.yellow, fontSize: 42, fontWeight: '800', letterSpacing: 12, marginTop: 4 },

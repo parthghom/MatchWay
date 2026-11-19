@@ -101,3 +101,30 @@ if __name__ == "__main__":
     test_virtual_rooms_destinations()
     test_virtual_rooms_removal()
     print("All tests passed!")
+
+
+def _req(i):
+    return RideRequest(id=f"req{i}", rider_id=f"r{i}", flow="campus_to_destination", destination="Mall",
+                       vehicle_type="cab", time_window_start=100, time_window_end=200)
+
+
+def test_room_choice_prefers_similar_ratings():
+    scores = {"low": 2.0, "high": 4.8, "new": 4.5}
+    rm = RoomManager()
+    # two rooms already exist: one with a 2.0 rider, one with a 4.8 rider
+    # (a gap rule makes sure they could not have been mixed)
+    low = Rider(id="low", name="L", gender="male", preference="mix")
+    high = Rider(id="high", name="H", gender="male", preference="mix")
+    room_low = rm.assign(low, _req(1), score_of=scores.get, max_gap=1.5)
+    room_high = rm.assign(high, _req(2), score_of=scores.get, max_gap=1.5)
+    assert room_low != room_high          # 2.0 and 4.8 are too far apart to share a room
+
+    new = Rider(id="new", name="N", gender="male", preference="mix")
+    assert rm.assign(new, _req(3), score_of=scores.get, max_gap=1.5) == room_high
+
+
+def test_no_score_function_keeps_the_old_behaviour():
+    rm = RoomManager()
+    a = Rider(id="a", name="A", gender="male", preference="mix")
+    b = Rider(id="b", name="B", gender="male", preference="mix")
+    assert rm.assign(a, _req(1)) == rm.assign(b, _req(2))

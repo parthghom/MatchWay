@@ -202,6 +202,7 @@ export default function WaitingScreen({ pickup, drop, vehicle, fareLow, fareHigh
               <Text style={s.peerName} numberOfLines={1}>
                 {m ? (m.rider_id === riderId ? 'You' : m.name) : 'Waiting'}
               </Text>
+              {m && typeof m.rating === 'number' ? <Text style={s.peerRating}>★ {m.rating.toFixed(1)}</Text> : null}
               {m && room.accepted.indexOf(m.rider_id) !== -1 ? <Text style={s.ok}>✓ Ready</Text> : null}
             </View>
           ))}
@@ -260,6 +261,7 @@ export default function WaitingScreen({ pickup, drop, vehicle, fareLow, fareHigh
 }
 
 const s = StyleSheet.create({
+  peerRating: { color: C.yellow, fontSize: 12, fontWeight: '700', marginTop: 2 },
   screen: { flex: 1, backgroundColor: C.bg, paddingTop: TOP, paddingHorizontal: 20, paddingBottom: 24 },
   hero: { alignItems: 'center', marginBottom: 22 },
   kindRow: { marginBottom: 12 },

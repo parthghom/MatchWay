@@ -7,6 +7,7 @@ import { C } from '../../theme';
 import { API } from '../../config';
 import { supabase } from '../../supabase';
 import { BackArrow } from '../../components/icons';
+import RatingCard from '../../components/RatingCard';
 import { VEHICLE_ICON } from './DriverHome';
 
 const TOP = (StatusBar.currentHeight || 24) + 10;
@@ -81,6 +82,8 @@ export default function DriverProfile({ profile, email, onBack, onSignOut }) {
         <View style={s.avatar}><Text style={s.avatarText}>{name.charAt(0).toUpperCase()}</Text></View>
         <Text style={s.name}>{name}</Text>
         <Text style={s.role}>Driver</Text>
+
+        <RatingCard initial={profile?.rating} />
 
         <View style={s.card}>
           <Row label="Full name" value={p.full_name} />

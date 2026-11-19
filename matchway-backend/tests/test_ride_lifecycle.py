@@ -149,3 +149,88 @@ def test_unknown_ride_ids(service_factory):
 @pytest.fixture
 def service_factory():
     return make_service
+
+
+# ---- ratings belong to people (user ids), show up on the profile and steer matching ----
+
+def _finished_ride(service, users):
+    """users = {rider_id: user_id}. Everybody rides together; returns the completed ride."""
+    results = []
+    for rider_id, user_id in users.items():
+        rider = Rider(id=rider_id, name=rider_id, gender="male", preference="mix")
+        req = RideRequest(id="q" + rider_id, rider_id=rider_id, flow="campus_to_destination",
+                          destination="Mall", vehicle_type="cab", time_window_start=600, time_window_end=660)
+        results.append(service.request_ride(rider, req, ["Gate", "Road", "Mall"], 12.9716, 77.5946, 5.0, user_id=user_id))
+    ride = service.confirm_ride(results[0].room_id)
+    service.start_ride(ride.ride_id, ride.otp)
+    service.complete_ride(ride.ride_id)
+    return ride
+
+
+def test_rating_follows_the_user_not_the_ride_id(service_factory):
+    service = service_factory()
+    ride = _finished_ride(service, {"r1": "userA", "r2": "userB"})
+    service.submit_review(ride.ride_id, "r1", "r2", 5)
+    assert service.reviews.get_score("userB") == 3.6
+    assert service.rating_summary("userB") == {"score": 3.6, "count": 1}
+
+    # next day userB books again with a brand new rider id: the rating is still there
+    rider = Rider(id="r77", name="B again", gender="male", preference="mix")
+    req = RideRequest(id="q77", rider_id="r77", flow="campus_to_destination", destination="Mall",
+                      vehicle_type="cab", time_window_start=600, time_window_end=660)
+    service.request_ride(rider, req, ["Gate", "Road", "Mall"], 12.9716, 77.5946, 5.0, user_id="userB")
+    assert rider.compatibility_score == 3.6
+
+
+def test_driver_review_updates_the_driver_rating(service_factory):
+    service = service_factory()
+    ride = _finished_ride(service, {"r1": "userA"})
+    out = service.submit_review(ride.ride_id, "r1", "d1", 5)
+    assert out["role"] == "driver" and out["count"] == 1
+    assert service.rating_summary("d1") == {"score": 3.6, "count": 1}
+
+
+def test_phone_cannot_choose_its_own_rating(service_factory):
+    service = service_factory()
+    rider = Rider(id="r1", name="Cheat", gender="male", preference="mix", compatibility_score=5.0)
+    req = RideRequest(id="q1", rider_id="r1", flow="campus_to_destination", destination="Mall",
+                      vehicle_type="cab", time_window_start=600, time_window_end=660)
+    service.request_ride(rider, req, ["Gate", "Road", "Mall"], 12.9716, 77.5946, 5.0, user_id="userA")
+    assert rider.compatibility_score == 3.0
+
+
+def test_block_by_one_star_works_across_bookings_of_the_same_users(service_factory):
+    service = service_factory()
+    ride = _finished_ride(service, {"r1": "userA", "r2": "userB"})
+    service.submit_review(ride.ride_id, "r1", "r2", 1)
+
+    a = Rider(id="r10", name="A", gender="male", preference="mix")
+    b = Rider(id="r11", name="B", gender="male", preference="mix")
+    def req(rid):
+        return RideRequest(id="q" + rid, rider_id=rid, flow="campus_to_destination", destination="Mall",
+                           vehicle_type="cab", time_window_start=600, time_window_end=660)
+    res_a = service.request_ride(a, req("r10"), ["Gate", "Road", "Mall"], 12.9716, 77.5946, 5.0, user_id="userA")
+    res_b = service.request_ride(b, req("r11"), ["Gate", "Road", "Mall"], 12.9716, 77.5946, 5.0, user_id="userB")
+    assert res_a.room_id != res_b.room_id
+
+
+def test_riders_with_far_apart_ratings_are_not_grouped(service_factory):
+    service = service_factory()
+    service.reviews.scores.put("star", 4.8)
+    service.reviews.scores.put("poor", 2.0)
+    def go(rider_id, user_id):
+        rider = Rider(id=rider_id, name=rider_id, gender="male", preference="mix")
+        req = RideRequest(id="q" + rider_id, rider_id=rider_id, flow="campus_to_destination", destination="Mall",
+                          vehicle_type="cab", time_window_start=600, time_window_end=660)
+        return service.request_ride(rider, req, ["Gate", "Road", "Mall"], 12.9716, 77.5946, 5.0, user_id=user_id)
+    assert go("r1", "star").room_id != go("r2", "poor").room_id
+
+
+def test_room_status_shows_each_riders_rating(service_factory):
+    service = service_factory()
+    service.reviews.scores.put("userA", 4.2)
+    rider = Rider(id="r1", name="A", gender="male", preference="mix")
+    req = RideRequest(id="q1", rider_id="r1", flow="campus_to_destination", destination="Mall",
+                      vehicle_type="cab", time_window_start=600, time_window_end=660)
+    result = service.request_ride(rider, req, ["Gate", "Road", "Mall"], 12.9716, 77.5946, 5.0, user_id="userA")
+    assert service.room_status(result.room_id)["members"][0]["rating"] == 4.2

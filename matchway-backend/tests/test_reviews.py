@@ -23,8 +23,8 @@ def test_review_blocking():
     service.submit_review("r1", "r2", 1)
     assert service.is_blocked("r1", "r2") is True
     assert service.is_blocked("r2", "r1") is True
-    # Score should remain default 3.0
-    assert service.get_score("r2") == 3.0
+    # and it still goes through the EMA: 0.3*1 + 0.7*3.0 = 2.4
+    assert service.get_score("r2") == 2.4
 
 def test_review_unsafe():
     service = ReviewService()
@@ -60,3 +60,36 @@ def test_review_validation():
 def test_review_unknown_rider():
     service = ReviewService()
     assert service.get_score("unknown") == 3.0
+
+
+def test_every_star_value_follows_the_ema_formula():
+    # S_new = 0.3 * stars + 0.7 * S_old, starting from 3.0
+    for stars, expected in [(1, 2.4), (2, 2.7), (3, 3.0), (4, 3.3), (5, 3.6)]:
+        service = ReviewService()
+        service.submit_review("a", "b", stars)
+        assert service.get_score("b") == expected
+
+
+def test_recent_reviews_weigh_more():
+    good_then_bad = ReviewService()
+    bad_then_good = ReviewService()
+    for stars in (5, 5, 5, 1):
+        good_then_bad.submit_review("a", "x", stars)
+    for stars in (1, 5, 5, 5):
+        bad_then_good.submit_review("a", "x", stars)
+    assert bad_then_good.get_score("x") > good_then_bad.get_score("x")
+
+
+def test_review_count_and_summary():
+    service = ReviewService()
+    assert service.summary("new") == {"score": 3.0, "count": 0}
+    service.submit_review("a", "new", 5)
+    service.submit_review("b", "new", 4)
+    # 3.0 -> 3.6 -> 0.3*4 + 0.7*3.6 = 3.72
+    assert service.summary("new") == {"score": 3.7, "count": 2}
+
+
+def test_bool_is_not_a_star_rating():
+    service = ReviewService()
+    with pytest.raises(ValueError):
+        service.submit_review("a", "b", True)

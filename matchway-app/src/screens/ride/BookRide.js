@@ -15,6 +15,7 @@ import { useLocation } from '../../location';
 import { RADIUS_KM, distanceKm, dropTime } from '../../geo';
 import { loadRecents, saveRecent } from '../../recents';
 import OlaMap from '../../components/OlaMap';
+import { RatingPill } from '../../components/RatingCard';
 import { SearchIcon, ClockIcon, TargetIcon, BackArrow, ProfileIcon } from '../../components/icons';
 import SearchScreen from './SearchScreen';
 
@@ -210,7 +211,6 @@ export default function BookRide({ gender, busy, onBook, onProfile, onStage, vis
         spots={stage === 'home' || stage === 'pick' ? spots : null}
         route={stage === 'options' && info ? info.points : null}
         fitPad={FIT_PAD}
-        pin={stage === 'pick'}
         onMoved={onMoved}
         onMoveStart={() => setMoving(true)}
         visible={visible}
@@ -240,6 +240,15 @@ export default function BookRide({ gender, busy, onBook, onProfile, onStage, vis
           </>
         )}
 
+        {stage === 'pick' && (
+          <View pointerEvents="none" style={s.pinWrap}>
+            <View style={[s.pinHead, moving && { transform: [{ translateY: -10 }] }]}>
+              <View style={s.pinDot} />
+            </View>
+            <View style={s.pinStem} />
+            <View style={s.pinShadow} />
+          </View>
+        )}
       {/* PICK ON MAP */}
       {stage === 'pick' && (
         <>
@@ -381,9 +390,12 @@ export default function BookRide({ gender, busy, onBook, onProfile, onStage, vis
           <View style={s.header}>
             <View style={s.headerRow}>
               <Text style={s.logo}>Match<Text style={{ color: C.yellow }}>Way</Text></Text>
-              <TouchableOpacity style={s.profileBtn} onPress={onProfile} activeOpacity={0.8}>
-                <ProfileIcon size={22} />
-              </TouchableOpacity>
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <RatingPill onPress={onProfile} />
+                <TouchableOpacity style={s.profileBtn} onPress={onProfile} activeOpacity={0.8}>
+                  <ProfileIcon size={22} />
+                </TouchableOpacity>
+              </View>
             </View>
             <TouchableOpacity style={s.search} activeOpacity={0.8} onPress={openSearch}>
               <SearchIcon />
@@ -451,11 +463,11 @@ const s = StyleSheet.create({
     backgroundColor: C.card, borderWidth: 1, borderColor: C.line, alignItems: 'center', justifyContent: 'center',
   },
 
-  pinWrap: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center', paddingBottom: 52, zIndex: 30, elevation: 30 },
-  pinHead: { width: 40, height: 40, borderRadius: 20, backgroundColor: C.yellow, borderWidth: 3, borderColor: C.bg, alignItems: 'center', justifyContent: 'center', marginBottom: -2, elevation: 30 },
-  pinDot: { width: 14, height: 14, borderRadius: 7, backgroundColor: C.bg },
-  pinStem: { width: 4, height: 18, backgroundColor: C.yellow, elevation: 30 },
-  pinShadow: { width: 12, height: 5, borderRadius: 6, backgroundColor: 'rgba(0,0,0,0.55)', marginTop: -1 },
+  pinWrap: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center' },
+  pinHead: { width: 34, height: 34, borderRadius: 17, backgroundColor: C.yellow, alignItems: 'center', justifyContent: 'center', marginBottom: -2 },
+  pinDot: { width: 12, height: 12, borderRadius: 6, backgroundColor: C.bg },
+  pinStem: { width: 3, height: 18, backgroundColor: C.yellow },
+  pinShadow: { width: 10, height: 4, borderRadius: 5, backgroundColor: 'rgba(0,0,0,0.5)', marginTop: -1 },
 
   roundBack: {
     position: 'absolute', top: 48, left: 16, width: 44, height: 44, borderRadius: 22, backgroundColor: C.card,

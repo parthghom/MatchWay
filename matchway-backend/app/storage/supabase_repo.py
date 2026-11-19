@@ -35,14 +35,26 @@ class SupabaseRepository:
         }
         self.client.table("rides").upsert(data).execute()
 
-    def save_review(self, ride_id, reviewer_id, target_id, stars):
+    def save_review(self, ride_id, reviewer_id, target_id, stars, target_role=None):
         data = {
             "ride_id": ride_id,
             "reviewer_id": reviewer_id,
             "target_id": target_id,
             "stars": stars
         }
-        self.client.table("reviews").insert(data).execute()
+        try:
+            self.client.table("reviews").insert({**data, "target_role": target_role}).execute()
+        except Exception:
+            # the table has no target_role column yet (see supabase_reviews.sql): save the basics
+            self.client.table("reviews").insert(data).execute()
+
+    def load_reviews(self):
+        """All saved reviews, oldest first (so replaying them gives the same EMA scores as before)."""
+        try:
+            res = self.client.table("reviews").select("*").order("created_at").execute()
+        except Exception:
+            res = self.client.table("reviews").select("*").execute()
+        return res.data
 
     def load_drivers(self):
         res = self.client.table("drivers").select("*").execute()

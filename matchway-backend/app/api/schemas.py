@@ -84,6 +84,7 @@ class ReviewRequest(BaseModel):
 class ReviewResponse(BaseModel):
     ok: bool
     target_score: float
+    target_count: int = 0
 
 class VerifyEmailRequest(BaseModel):
     user_id: str

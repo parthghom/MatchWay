@@ -81,7 +81,12 @@ class RoomManager:
         self.rooms_map = HashMap()
         self.room_counter = 0
 
-    def assign(self, rider, request, is_blocked=None):
+    def assign(self, rider, request, is_blocked=None, score_of=None, max_gap=None):
+        """Puts the rider in the best room.
+        - is_blocked(a, b): rooms that hold somebody blocked with this rider are skipped.
+        - score_of(rider_id): the rider's EMA rating. When given, the room whose riders are
+          rated closest to this rider wins (good riders end up with good riders), and a room is
+          refused if any member is further away than max_gap rating points."""
         key = f"{request.flow}|{request.destination}|{request.vehicle_type}"
 
         # Get rooms for this key or empty list
@@ -90,20 +95,43 @@ class RoomManager:
             rooms = self.rooms_map.get(key)
 
         # Try to find an existing room that fits
+        best_room = None
+        best_gap = None
         for room in rooms:
-            if room.can_join(rider, request):
-                if is_blocked is not None:
-                    # Skip room if rider is blocked by ANY member
-                    blocked = False
-                    for member_rider, _ in room.members:
-                        if is_blocked(rider.id, member_rider.id):
-                            blocked = True
-                            break
-                    if blocked:
-                        continue
+            if not room.can_join(rider, request):
+                continue
+            if is_blocked is not None:
+                # Skip room if rider is blocked by ANY member
+                blocked = False
+                for member_rider, _ in room.members:
+                    if is_blocked(rider.id, member_rider.id):
+                        blocked = True
+                        break
+                if blocked:
+                    continue
 
-                room.add(rider, request)
-                return room
+            gap = 0.0
+            if score_of is not None:
+                mine = score_of(rider.id)
+                total = 0.0
+                too_far = False
+                for member_rider, _ in room.members:
+                    theirs = score_of(member_rider.id)
+                    total += theirs
+                    if max_gap is not None and abs(theirs - mine) > max_gap:
+                        too_far = True
+                if too_far:
+                    continue
+                gap = abs(total / len(room.members) - mine)
+
+            # strictly smaller: on a tie the older room keeps winning (the old behaviour)
+            if best_room is None or gap < best_gap:
+                best_room = room
+                best_gap = gap
+
+        if best_room is not None:
+            best_room.add(rider, request)
+            return best_room
 
         # No room fits, create a new one
         self.room_counter += 1

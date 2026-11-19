@@ -3,6 +3,7 @@ import React from 'react';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, StatusBar } from 'react-native';
 import { C } from '../../theme';
 import { BackArrow } from '../../components/icons';
+import RatingCard from '../../components/RatingCard';
 
 const TOP = (StatusBar.currentHeight || 24) + 10;
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -50,6 +51,8 @@ export default function ProfileScreen({ profile, email, onBack, onSignOut }) {
         <View style={s.avatar}><Text style={s.avatarText}>{name.charAt(0).toUpperCase()}</Text></View>
         <Text style={s.name}>{name}</Text>
         <Text style={s.role}>{cap(p.role)}</Text>
+
+        <RatingCard initial={profile?.rating} />
 
         <View style={s.card}>
           <Row label="Full name" value={p.full_name} />

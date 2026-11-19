@@ -9,7 +9,10 @@
 # 6. OTP: When the driver accepts, a 4-digit code is made and shown to the riders.
 # 7. start: The driver types the OTP at the pickup, then the ride begins.
 # 8. complete and pay: Ride ends -> driver released -> fares split and paid.
-# 9. review: Riders rate each other and the driver using EMA.
+# 9. review: Riders rate the driver and every co-passenger (1-5 stars). Each review updates the
+#    target's EMA rating. Ratings belong to the PERSON (user id), so they live on across rides, show
+#    on the profile, and steer matching: riders are grouped with similarly well-rated riders, and
+#    well-rated drivers are preferred when a driver is chosen.
 
 import math
 import time
@@ -20,13 +23,13 @@ from app.engine.matching_engine import MatchingEngine
 from app.engine.driver_dispatch import DriverDispatcher
 from app.engine.reviews import ReviewService
 from app.engine.otp import OTPService
-from app.engine.trip_history import TripHistory, now_iso
 from app.engine.fare import approximate_fare_range, exact_fare, split_payment
 
 
 GROUP_ACCEPT_SECONDS = 15   # everybody in a full group must accept within this time
 OFFER_SECONDS = 30          # a driver has this long to accept an offered ride
 DECLINE_COOLDOWN = 60       # a driver who declined is not offered the same ride again for this long
+MAX_RATING_GAP = 1.5        # riders whose ratings are further apart than this are not put in one room
 
 
 class RequestResult:
@@ -51,6 +54,7 @@ class Ride:
         self.drop = None
         self.offered_at = None
         self.payments = None           # filled when the ride completes
+        self.riders = []               # [{"rider_id", "name"}]: who was on board (kept after the room is gone)
 
 class RiderRecord:
     def __init__(self, rider, request, pickup_lat, pickup_lon, km,
@@ -72,24 +76,47 @@ class RideService:
         self.engine = MatchingEngine()
         self.reviews = ReviewService()
         self.otp_service = OTPService()
+        # the dispatcher asks us for a driver's rating, so well-rated drivers are preferred
+        self.dispatcher.rating_of = self.reviews.get_score
 
         self.rooms_by_id = HashMap() # room_id -> VirtualRoom
         self.riders = HashMap() # rider_id -> RiderRecord
         self.rides = HashMap() # ride_id -> Ride
         self.ride_of_room = HashMap() # room_id -> ride_id
         self.ride_counter = 0
-        self.history = TripHistory()     # finished trips, a Stack per rider and per driver
 
         # group agreement ("continue with N")
         self.user_of_rider = HashMap()   # rider_id -> user_id (for profile pictures)
         self.votes = HashMap()           # rider_id -> the group ("r1,r2") they said continue to
         self.full_since = HashMap()      # room_id -> time the room became full
         self.declined = HashMap()        # "room_id|driver_id" -> time the driver declined
+        self.review_tracker = HashMap()  # "ride|reviewer|target" -> True (one review per pair per ride)
+
+    # ---- identity and ratings ----------------------------------------------
+    def identity(self, rider_id):
+        """Ratings belong to the person, not to one request. A rider id like "r1731..." is new for
+        every booking, so we use the user id behind it (a driver id already is a user id)."""
+        if self.user_of_rider.contains(rider_id):
+            return self.user_of_rider.get(rider_id)
+        return rider_id
+
+    def rating_of(self, rider_id):
+        return self.reviews.get_score(self.identity(rider_id))
+
+    def _blocked(self, a, b):
+        return self.reviews.is_blocked(self.identity(a), self.identity(b))
+
+    def rating_summary(self, identity):
+        return self.reviews.summary(identity)
 
     def request_ride(self, rider, request, route, pickup_lat, pickup_lon, km,
-                     pickup_name=None, drop_lat=None, drop_lon=None, drop_name=None):
+                     pickup_name=None, drop_lat=None, drop_lon=None, drop_name=None, user_id=None):
         if self.engine.entries.contains(rider.id) and self.engine.entries.get(rider.id).active is True:
             raise ValueError("Rider already has an active request")
+        if user_id:
+            self.user_of_rider.put(rider.id, user_id)
+        # the rating comes from the server's record, never from what the phone says
+        rider.compatibility_score = self.rating_of(rider.id)
         # 1. Store rider record
         self.riders.put(rider.id, RiderRecord(
             rider, request, pickup_lat, pickup_lon, km, pickup_name, drop_lat, drop_lon, drop_name))
@@ -98,7 +125,8 @@ class RideService:
         self.engine.register(rider, request, route)
 
         # 3. Assign to room
-        room = self.room_manager.assign(rider, request, is_blocked=self.reviews.is_blocked)
+        room = self.room_manager.assign(
+            rider, request, is_blocked=self._blocked, score_of=self.rating_of, max_gap=MAX_RATING_GAP)
         self.rooms_by_id.put(room.room_id, room)
 
         # 4. Find compatible matches
@@ -106,7 +134,7 @@ class RideService:
         # Filter matches based on blocking
         filtered_matches = []
         for mid in all_matches:
-            if not self.reviews.is_blocked(rider.id, mid):
+            if not self._blocked(rider.id, mid):
                 filtered_matches.append(mid)
 
         # 5. Fare range
@@ -182,7 +210,8 @@ class RideService:
         members = []
         for m_rider, _ in room.members:
             user_id = self.user_of_rider.get(m_rider.id) if self.user_of_rider.contains(m_rider.id) else None
-            members.append({"rider_id": m_rider.id, "name": m_rider.name, "user_id": user_id})
+            members.append({"rider_id": m_rider.id, "name": m_rider.name, "user_id": user_id,
+                            "rating": round(self.rating_of(m_rider.id), 1)})
         # exact share for the riders now in the room: full vehicle fare / riders (longest trip sets the total)
         max_km = 0.0
         for m_rider, _ in room.members:
@@ -249,6 +278,7 @@ class RideService:
         ride.driver_name = driver.name
         ride.pickup = pickup
         ride.drop = drop
+        ride.riders = [{"rider_id": m[0].id, "name": m[0].name} for m in room.members]
         return ride
 
     def _store_ride(self, ride):
@@ -396,28 +426,11 @@ class RideService:
                 self.room_manager.remove(rider_id, record.request)
 
         ride.payments = split_payment(ride.vehicle_type, ride.km, ride.rider_ids)
-        self._record_history(ride)
         return ride.payments
 
-    def _record_history(self, ride):
-        """Pushes the finished trip on the driver's stack and on each rider's stack."""
-        when = now_iso()
-        base = {
-            "id": ride.ride_id,
-            "pickup": ride.pickup["name"] if ride.pickup else "Pickup",
-            "drop": ride.drop["name"] if ride.drop else "Drop",
-            "vehicle": ride.vehicle_type,
-            "km": ride.km,
-            "riders": len(ride.rider_ids),
-            "date": when,
-        }
-        total = round(sum(amount for _, amount in ride.payments), 2)
-        self.history.record("driver", ride.driver_id, dict(base, fare=total))
-        for rider_id, amount in ride.payments:
-            if self.user_of_rider.contains(rider_id):
-                self.history.record("rider", self.user_of_rider.get(rider_id), dict(base, fare=amount))
-
     def submit_review(self, ride_id, reviewer_id, target_id, stars):
+        """A rider rates the driver or one co-passenger after the ride.
+        Returns {"role": "driver" | "rider", "target_identity", "reviewer_identity", "score", "count"}."""
         if not self.rides.contains(ride_id):
             raise KeyError(f"Ride {ride_id} unknown")
 
@@ -433,19 +446,27 @@ class RideService:
         if not (is_other_rider or is_driver):
             raise ValueError(f"Target {target_id} was not on ride {ride_id}")
 
-        # Track reviews to prevent duplicates: ride_id | reviewer_id | target_id
+        # one review per reviewer and target for each ride
         review_key = f"{ride_id}|{reviewer_id}|{target_id}"
-        if not hasattr(self, 'review_tracker'):
-            self.review_tracker = HashMap()
-
         if self.review_tracker.contains(review_key):
             raise ValueError(f"Reviewer {reviewer_id} already reviewed target {target_id} for ride {ride_id}")
 
-        self.reviews.submit_review(reviewer_id, target_id, stars)
+        reviewer_identity = self.identity(reviewer_id)
+        target_identity = self.identity(target_id)
+        self.reviews.submit_review(reviewer_identity, target_identity, stars)
         self.review_tracker.put(review_key, True)
 
         if is_other_rider:
             record = self.riders.get(target_id)
             if record:
-                # Update compatibility_score on the Rider object
-                record.rider.compatibility_score = self.reviews.get_score(target_id)
+                # keep the Rider object (used to sort matches) in step with the EMA score
+                record.rider.compatibility_score = self.reviews.get_score(target_identity)
+
+        summary = self.reviews.summary(target_identity)
+        return {
+            "role": "driver" if is_driver else "rider",
+            "reviewer_identity": reviewer_identity,
+            "target_identity": target_identity,
+            "score": self.reviews.get_score(target_identity),
+            "count": summary["count"],
+        }

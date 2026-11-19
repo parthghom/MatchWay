@@ -21,13 +21,18 @@ class MemoryRepository:
     def save_ride(self, ride):
         self.rides[ride.ride_id] = ride
 
-    def save_review(self, ride_id, reviewer_id, target_id, stars):
+    def save_review(self, ride_id, reviewer_id, target_id, stars, target_role=None):
         self.reviews.append({
             "ride_id": ride_id,
             "reviewer_id": reviewer_id,
             "target_id": target_id,
-            "stars": stars
+            "stars": stars,
+            "target_role": target_role,
         })
+
+    def load_reviews(self):
+        """All saved reviews, oldest first. The server replays them at start-up to rebuild every EMA score."""
+        return list(self.reviews)
 
     def load_drivers(self):
         return list(self.drivers.values())

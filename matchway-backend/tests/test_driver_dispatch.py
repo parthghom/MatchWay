@@ -129,3 +129,32 @@ def test_count_nearby_none_within_10km():
     dispatcher.update_driver(Driver(id="gone", name="G", vehicle_type="auto", latitude=lat + 0.2, longitude=lon))
     assert dispatcher.count_nearby(lat, lon, "auto") == (0, 10000)
     assert dispatcher.count_nearby(lat, lon, "cab") == (0, 10000)   # no cab drivers at all
+
+
+# ---- ratings steer the driver choice ----
+
+def _two_drivers(near_score, far_score):
+    dispatcher = DriverDispatcher()
+    lat, lon = 12.9716, 77.5946
+    # d_near ~ 220 m away, d_far ~ 1.1 km away
+    dispatcher.update_driver(Driver(id="d_near", name="Near", vehicle_type="cab", latitude=lat + 0.002, longitude=lon))
+    dispatcher.update_driver(Driver(id="d_far", name="Far", vehicle_type="cab", latitude=lat + 0.010, longitude=lon))
+    scores = {"d_near": near_score, "d_far": far_score}
+    dispatcher.rating_of = lambda driver_id: scores[driver_id]
+    return dispatcher, lat, lon
+
+
+def test_equal_ratings_pick_the_nearest_driver():
+    dispatcher, lat, lon = _two_drivers(3.0, 3.0)
+    assert dispatcher.find_driver("spot", lat, lon, "cab").id == "d_near"
+
+
+def test_much_better_rated_driver_beats_a_slightly_nearer_one():
+    dispatcher, lat, lon = _two_drivers(2.6, 4.8)
+    assert dispatcher.find_driver("spot", lat, lon, "cab").id == "d_far"
+
+
+def test_driver_with_a_very_low_rating_gets_no_rides():
+    dispatcher, lat, lon = _two_drivers(1.5, 1.9)
+    assert dispatcher.find_driver("spot", lat, lon, "cab") is None
+    assert dispatcher.count_nearby(lat, lon, "cab")[0] == 0

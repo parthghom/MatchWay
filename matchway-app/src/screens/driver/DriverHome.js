@@ -7,6 +7,7 @@ import { useDriverLocation } from './useDriverLocation';
 import LocationProbe from './LocationProbe';
 import OlaMap from '../../components/OlaMap';
 import { TargetIcon, ProfileIcon } from '../../components/icons';
+import { RatingPill } from '../../components/RatingCard';
 import { useDriverRide } from './useDriverRide';
 import DriverRideCard from './DriverRideCard';
 
@@ -58,9 +59,12 @@ export default function DriverHome({ vehicleType, driverId, driverName, onProfil
       <View style={s.header}>
         <View style={s.headerRow}>
           <Text style={s.logo}>Match<Text style={{ color: C.yellow }}>Way</Text></Text>
-          <TouchableOpacity style={s.profileBtn} onPress={onProfile} activeOpacity={0.8}>
-            <ProfileIcon size={22} />
-          </TouchableOpacity>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <RatingPill onPress={onProfile} />
+            <TouchableOpacity style={s.profileBtn} onPress={onProfile} activeOpacity={0.8}>
+              <ProfileIcon size={22} />
+            </TouchableOpacity>
+          </View>
         </View>
       </View>
 

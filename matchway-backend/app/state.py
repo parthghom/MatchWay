@@ -34,6 +34,17 @@ class AppState:
         except Exception as e:
             print(f"Warning: Failed to load state from repo: {e}")
 
+        # Rebuild every rider's and driver's EMA rating by replaying the saved reviews in order.
+        # (Ratings are not stored as a number: the same reviews always give the same score.)
+        try:
+            for r in self.repo.load_reviews():
+                try:
+                    self.rides.reviews.submit_review(r["reviewer_id"], r["target_id"], int(r["stars"]))
+                except (ValueError, KeyError, TypeError):
+                    pass   # an old or broken row must not stop the server
+        except Exception as e:
+            print(f"Warning: Could not load reviews: {e}")
+
 current = AppState()
 
 def reset(repo=None):

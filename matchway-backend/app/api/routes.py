@@ -1,5 +1,6 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException
 from app import state
+from app.auth import get_current_user
 from app.api.schemas import (
     SpotRequest, SpotResponse, RideRequestPayload, RideRequestResponse,
     ConfirmRequest, CancelRequest, ContinueRequest, ConfirmResponse, StartRideRequest, StartRideResponse,
@@ -92,7 +93,8 @@ async def request_ride(payload: RideRequestPayload):
         result = state.current.rides.request_ride(
             payload.rider, payload.request, payload.route,
             payload.pickup_lat, payload.pickup_lon, payload.km,
-            payload.pickup_name, payload.drop_lat, payload.drop_lon, payload.drop_name
+            payload.pickup_name, payload.drop_lat, payload.drop_lon, payload.drop_name,
+            user_id=payload.user_id
         )
         if payload.user_id:
             state.current.rides.set_rider_user(payload.rider.id, payload.user_id)
@@ -160,14 +162,14 @@ async def confirm_ride(payload: ConfirmRequest):
         raise HTTPException(status_code=400, detail=str(e))
 
 def _ride_for_rider(ride):
-    dispatcher = state.current.dispatcher
-    here = dispatcher.drivers.get(ride.driver_id) if dispatcher.drivers.contains(ride.driver_id) else None
+    svc = state.current.rides
     return {
-        "driver_lat": here.latitude if here else None,
-        "driver_lon": here.longitude if here else None,
         "ride_id": ride.ride_id,
         "driver_id": ride.driver_id,
         "driver_name": ride.driver_name,
+        "driver_rating": svc.rating_summary(svc.identity(ride.driver_id)),
+        "vehicle_type": ride.vehicle_type,
+        "riders": ride.riders,
         "rider_ids": ride.rider_ids,
         "exact_share": ride.exact_share,
         "otp": ride.otp,
@@ -291,32 +293,40 @@ async def complete_ride(payload: CompleteRideRequest):
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-@router.get("/history/{role}/{user_id}")
-async def trip_history(role: str, user_id: str):
-    """Finished trips of a rider or a driver, newest first (read from the history Stack)."""
-    if role not in ("rider", "driver"):
-        raise HTTPException(status_code=404, detail="role must be rider or driver")
-    return {"trips": state.current.rides.history.get(role, user_id)}
-
 @router.post("/rides/review")
-async def submit_review(payload: ReviewRequest):
+async def submit_review(payload: ReviewRequest, authorization: str = Header(None)):
+    """A rider rates the driver or a co-passenger (1-5 stars) once the ride is completed.
+    The star goes into the target's EMA rating, which is saved and shown on his profile."""
+    svc = state.current.rides
+    # a logged-in rider may only review as himself
+    if svc.user_of_rider.contains(payload.reviewer_id):
+        user = await get_current_user(authorization)
+        if user.id != svc.user_of_rider.get(payload.reviewer_id):
+            raise HTTPException(status_code=403, detail="You can only review as yourself")
     try:
-        state.current.rides.submit_review(payload.ride_id, payload.reviewer_id, payload.target_id, payload.stars)
+        result = svc.submit_review(payload.ride_id, payload.reviewer_id, payload.target_id, payload.stars)
 
         try:
-            state.current.repo.save_review(payload.ride_id, payload.reviewer_id, payload.target_id, payload.stars)
-            target_record = state.current.rides.riders.get(payload.target_id)
+            # saved against the PEOPLE (user ids), so the rating survives restarts and later rides
+            state.current.repo.save_review(
+                payload.ride_id, result["reviewer_identity"], result["target_identity"],
+                payload.stars, result["role"])
+            target_record = svc.riders.get(payload.target_id)
             if target_record:
                 state.current.repo.save_rider(target_record.rider)
         except Exception as e:
             print(f"Warning: Storage error: {e}")
 
-        target_score = state.current.rides.reviews.get_score(payload.target_id)
-        return {"ok": True, "target_score": target_score}
+        return {"ok": True, "target_score": result["score"], "target_count": result["count"], "role": result["role"]}
     except KeyError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+@router.get("/ratings/me")
+async def my_rating(user=Depends(get_current_user)):
+    """The signed-in rider's or driver's EMA rating, for the profile page."""
+    return state.current.rides.rating_summary(user.id)
 
 @router.post("/verify/email")
 async def verify_email(payload: VerifyEmailRequest):
