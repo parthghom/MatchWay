@@ -7,6 +7,7 @@ import { api } from '../api';
 import WaitingScreen from './ride/WaitingScreen';
 import DriverSearchScreen from './ride/DriverSearchScreen';
 import MainTabs from './ride/MainTabs';
+import RideTripScreen from './ride/RideTripScreen';
 import { saveRideToHistory } from '../history';
 
 
@@ -45,20 +46,6 @@ function Field({ label, ...props }) {
     <View>
       <Text style={s.label}>{label}</Text>
       <TextInput style={s.input} placeholderTextColor="#666" {...props} />
-    </View>
-  );
-}
-
-function Stepper({ index }) {
-  const names = ['Request', 'Match', 'Ride', 'Pay'];
-  return (
-    <View style={s.stepper}>
-      {names.map((n, i) => (
-        <View key={n} style={s.stepItem}>
-          <View style={[s.bar, i <= index && s.barOn]} />
-          <Text style={[s.stepText, i <= index && { color: C.yellow }]}>{n}</Text>
-        </View>
-      ))}
     </View>
   );
 }
@@ -167,8 +154,6 @@ export default function RideFlow({ profile, email, onSignOut }) {
     setPayments([]); setRating(0); setStarted(false);
   }
 
-  const index = { request: 0, matched: 1, finding: 1, ride: 2, done: 3 }[step];
-
   if (step === 'request') {
     return (
       <MainTabs
@@ -222,38 +207,14 @@ export default function RideFlow({ profile, email, onSignOut }) {
     );
   }
 
+  if (step === 'ride' && ride && trip) {
+    return <RideTripScreen ride={ride} trip={trip} started={started} />;
+  }
+
   return (
     <SafeAreaView style={s.screen}>
       <StatusBar barStyle="light-content" backgroundColor={C.bg} />
       <ScrollView contentContainerStyle={s.body} keyboardShouldPersistTaps="handled">
-        <Text style={s.logo}>Match<Text style={{ color: C.yellow }}>Way</Text></Text>
-        <Text style={s.tag}>Share rides. Split fares.</Text>
-        <Stepper index={index} />
-
-        {step === 'ride' && ride && (
-          <View>
-            <Text style={s.h2}>{started ? 'Ride in progress' : 'Driver is on the way'}</Text>
-            <View style={s.card}>
-              <Text style={s.mute}>Driver</Text>
-              <Text style={s.value}>{ride.driver_name || 'Your driver'}</Text>
-              <Text style={[s.mute, { marginTop: 14 }]}>Your fare</Text>
-              <Text style={s.fare}>₹{ride.exact_share}</Text>
-            </View>
-            {!started ? (
-              <View style={s.card}>
-                <Text style={s.mute}>Your OTP. Tell it to the driver when he arrives.</Text>
-                <Text style={s.otp}>{ride.otp}</Text>
-                <Text style={s.hint}>The ride starts when the driver enters this code.</Text>
-              </View>
-            ) : (
-              <View style={s.card}>
-                <Text style={s.value}>Sit back. The trip ends when the driver reaches your drop.</Text>
-                <ActivityIndicator color={C.yellow} style={{ marginTop: 14 }} />
-              </View>
-            )}
-          </View>
-        )}
-
         {step === 'done' && (
           <View>
             <Text style={s.h2}>Ride completed</Text>
@@ -284,7 +245,7 @@ export default function RideFlow({ profile, email, onSignOut }) {
 
 const s = StyleSheet.create({
   screen: { flex: 1, backgroundColor: C.bg },
-  body: { padding: 20, paddingTop: 56, paddingBottom: 40 },
+  body: { padding: 20, paddingTop: 64, paddingBottom: 40 },
   logo: { fontSize: 34, fontWeight: '800', color: C.text, letterSpacing: 0.5 },
   topRight: { position: 'absolute', right: 0, top: 56 },
   signOut: { color: C.yellow, fontWeight: '700', fontSize: 14 },
