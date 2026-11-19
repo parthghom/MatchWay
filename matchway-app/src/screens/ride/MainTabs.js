@@ -41,7 +41,7 @@ export default function MainTabs({ gender, busy, onBook, onSignOut, profile, ema
             onProfile={() => setShowProfile(true)}
           />
         </View>
-        {tab === 'history' && !showProfile && <HistoryScreen />}
+        {tab === 'history' && !showProfile && <HistoryScreen userId={profile?.user_id} />}
         {showProfile && (
           <ProfileScreen
             profile={profile}

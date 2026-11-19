@@ -2,7 +2,7 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, FlatList, StyleSheet, StatusBar } from 'react-native';
 import { C } from '../../theme';
-import { loadHistory } from '../../history';
+import { loadTrips } from '../../history';
 
 const TOP = (StatusBar.currentHeight || 24) + 16;
 const VEHICLE = { bike: ['🏍️', 'Bike'], auto: ['🛺', 'Auto'], cab: ['🚕', 'Cab'] };
@@ -16,10 +16,18 @@ function when(iso) {
   return `${d.getDate()} ${MONTHS[d.getMonth()]} · ${h}:${String(d.getMinutes()).padStart(2, '0')} ${ap}`;
 }
 
-export default function HistoryScreen({ title = 'Ride history', load = loadHistory, driver = false }) {
+export default function HistoryScreen({ title = 'Ride history', userId, driver = false }) {
   const [rides, setRides] = useState(null);
+  const [failed, setFailed] = useState(false);
 
-  useEffect(() => { load().then(setRides); }, [load]);
+  // the backend keeps the history; this asks for it each time the tab opens
+  useEffect(() => {
+    let alive = true;
+    loadTrips(driver ? 'driver' : 'rider', userId)
+      .then((t) => { if (alive) setRides(t); })
+      .catch(() => { if (alive) { setRides([]); setFailed(true); } });
+    return () => { alive = false; };
+  }, [driver, userId]);
 
   return (
     <View style={s.screen}>
@@ -31,8 +39,8 @@ export default function HistoryScreen({ title = 'Ride history', load = loadHisto
         ListEmptyComponent={
           rides ? (
             <View style={s.emptyBox}>
-              <Text style={s.emptyTitle}>{driver ? 'No completed trips yet' : 'No completed rides yet'}</Text>
-              <Text style={s.emptyText}>{driver ? 'Trips you finish will show up here.' : 'Rides you finish will show up here.'}</Text>
+              <Text style={s.emptyTitle}>{failed ? 'Could not load history' : driver ? 'No completed trips yet' : 'No completed rides yet'}</Text>
+              <Text style={s.emptyText}>{failed ? 'Check your internet and try again.' : driver ? 'Trips you finish will show up here.' : 'Rides you finish will show up here.'}</Text>
             </View>
           ) : null
         }

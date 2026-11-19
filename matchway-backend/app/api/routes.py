@@ -291,6 +291,13 @@ async def complete_ride(payload: CompleteRideRequest):
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
+@router.get("/history/{role}/{user_id}")
+async def trip_history(role: str, user_id: str):
+    """Finished trips of a rider or a driver, newest first (read from the history Stack)."""
+    if role not in ("rider", "driver"):
+        raise HTTPException(status_code=404, detail="role must be rider or driver")
+    return {"trips": state.current.rides.history.get(role, user_id)}
+
 @router.post("/rides/review")
 async def submit_review(payload: ReviewRequest):
     try:

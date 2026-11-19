@@ -36,7 +36,7 @@ export default function DriverTabs({ profile, email, onSignOut }) {
             onProfile={() => setShowProfile(true)}
           />
         </View>
-        {tab === 'history' && !showProfile && <DriverHistory />}
+        {tab === 'history' && !showProfile && <DriverHistory userId={profile?.user_id} />}
         {showProfile && (
           <DriverProfile
             profile={profile}

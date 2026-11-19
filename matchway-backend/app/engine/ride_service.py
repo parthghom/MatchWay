@@ -20,6 +20,7 @@ from app.engine.matching_engine import MatchingEngine
 from app.engine.driver_dispatch import DriverDispatcher
 from app.engine.reviews import ReviewService
 from app.engine.otp import OTPService
+from app.engine.trip_history import TripHistory, now_iso
 from app.engine.fare import approximate_fare_range, exact_fare, split_payment
 
 
@@ -77,6 +78,7 @@ class RideService:
         self.rides = HashMap() # ride_id -> Ride
         self.ride_of_room = HashMap() # room_id -> ride_id
         self.ride_counter = 0
+        self.history = TripHistory()     # finished trips, a Stack per rider and per driver
 
         # group agreement ("continue with N")
         self.user_of_rider = HashMap()   # rider_id -> user_id (for profile pictures)
@@ -394,7 +396,26 @@ class RideService:
                 self.room_manager.remove(rider_id, record.request)
 
         ride.payments = split_payment(ride.vehicle_type, ride.km, ride.rider_ids)
+        self._record_history(ride)
         return ride.payments
+
+    def _record_history(self, ride):
+        """Pushes the finished trip on the driver's stack and on each rider's stack."""
+        when = now_iso()
+        base = {
+            "id": ride.ride_id,
+            "pickup": ride.pickup["name"] if ride.pickup else "Pickup",
+            "drop": ride.drop["name"] if ride.drop else "Drop",
+            "vehicle": ride.vehicle_type,
+            "km": ride.km,
+            "riders": len(ride.rider_ids),
+            "date": when,
+        }
+        total = round(sum(amount for _, amount in ride.payments), 2)
+        self.history.record("driver", ride.driver_id, dict(base, fare=total))
+        for rider_id, amount in ride.payments:
+            if self.user_of_rider.contains(rider_id):
+                self.history.record("rider", self.user_of_rider.get(rider_id), dict(base, fare=amount))
 
     def submit_review(self, ride_id, reviewer_id, target_id, stars):
         if not self.rides.contains(ride_id):

@@ -5,7 +5,6 @@
 //  - accept / reject / start (with the OTP) / complete.
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, errorText } from '../../api';
-import { saveDriverTrip } from '../../history';
 
 export function useDriverRide({ driverId, name, vehicleType, coords }) {
   const [ride, setRide] = useState(null);
@@ -95,10 +94,6 @@ export function useDriverRide({ driverId, name, vehicleType, coords }) {
   const complete = () => act(async () => {
     const res = await api.post('/rides/complete', { ride_id: ride.ride_id });
     const total = Math.round((res.data.payments || []).reduce((sum, p) => sum + p.amount, 0) * 100) / 100;
-    await saveDriverTrip({
-      id: ride.ride_id, pickup: ride.pickup.name, drop: ride.drop ? ride.drop.name : 'Drop',
-      vehicle: ride.vehicle_type, fare: total, km: ride.km, riders: ride.riders, date: new Date().toISOString(),
-    });
     setEarned(total);
     setRide(null);
   });

@@ -8,7 +8,6 @@ import WaitingScreen from './ride/WaitingScreen';
 import DriverSearchScreen from './ride/DriverSearchScreen';
 import MainTabs from './ride/MainTabs';
 import RideTripScreen from './ride/RideTripScreen';
-import { saveRideToHistory } from '../history';
 
 
 const C = {
@@ -127,14 +126,6 @@ export default function RideFlow({ profile, email, onSignOut }) {
         if (res.data.status === 'completed') {
           const pays = res.data.payments || [];
           setPayments(pays); setRating(0); setPicked(0); setStep('done');
-          const mine = pays.find((p) => p.rider_id === riderId);
-          if (trip) {
-            saveRideToHistory({
-              id: ride.ride_id, pickup: trip.pickup.name, drop: trip.drop.name, vehicle: ride.vehicle_type || vehicle,
-              fare: mine ? mine.amount : ride.exact_share, km: trip.km, riders: ride.rider_ids ? ride.rider_ids.length : 1,
-              date: new Date().toISOString(),
-            });
-          }
         }
       } catch (e) {
         // keep the last status if the network blinks
@@ -143,7 +134,7 @@ export default function RideFlow({ profile, email, onSignOut }) {
     load();
     const t = setInterval(load, 3000);
     return () => { alive = false; clearInterval(t); };
-  }, [step, ride, riderId, trip, vehicle]);
+  }, [step, ride]);
 
   const review = (stars) => run(async () => {
     await api.post('/rides/review', {

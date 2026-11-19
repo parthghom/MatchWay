@@ -1,0 +1,160 @@
+from app.engine.driver_dispatch import DriverDispatcher
+from app.models.driver import Driver
+
+def test_dispatch_fifo():
+    dispatcher = DriverDispatcher()
+    d1 = Driver(id="d1", name="D1", vehicle_type="cab", latitude=12.0, longitude=77.0)
+    d2 = Driver(id="d2", name="D2", vehicle_type="cab", latitude=12.0, longitude=77.0)
+    dispatcher.update_driver(d1)
+    dispatcher.update_driver(d2)
+
+    dispatcher.arrive_at_spot("spotA", "d1")
+    dispatcher.arrive_at_spot("spotA", "d2")
+
+    # d1 should be assigned first
+    assigned = dispatcher.find_driver("spotA", 12.0, 77.0, "cab")
+    assert assigned.id == "d1"
+
+def test_dispatch_skip_busy():
+    dispatcher = DriverDispatcher()
+    d1 = Driver(id="d1", name="D1", vehicle_type="cab", latitude=12.0, longitude=77.0)
+    d2 = Driver(id="d2", name="D2", vehicle_type="cab", latitude=12.0, longitude=77.0)
+    dispatcher.update_driver(d1)
+    dispatcher.update_driver(d2)
+
+    d1.is_busy = True
+    dispatcher.update_driver(d1)
+
+    dispatcher.arrive_at_spot("spotA", "d1")
+    dispatcher.arrive_at_spot("spotA", "d2")
+
+    # d1 is busy, should skip to d2
+    assigned = dispatcher.find_driver("spotA", 12.0, 77.0, "cab")
+    assert assigned.id == "d2"
+
+def test_dispatch_nearest():
+    dispatcher = DriverDispatcher()
+    # Ref: 12.9716, 77.5946
+    lat, lon = 12.9716, 77.5946
+
+    # Near (approx 100m)
+    d1 = Driver(id="d1", name="D1", vehicle_type="cab", latitude=lat + 0.0009, longitude=lon)
+    # Mid (approx 1km)
+    d2 = Driver(id="d2", name="D2", vehicle_type="cab", latitude=lat + 0.009, longitude=lon)
+    # Far (approx 10km)
+    d3 = Driver(id="d3", name="D3", vehicle_type="cab", latitude=lat + 0.09, longitude=lon)
+
+    dispatcher.update_driver(d1)
+    dispatcher.update_driver(d2)
+    dispatcher.update_driver(d3)
+
+    # No queue, should find nearest
+    assigned = dispatcher.find_driver("spotA", lat, lon, "cab")
+    assert assigned.id == "d1"
+
+def test_dispatch_wrong_vehicle():
+    dispatcher = DriverDispatcher()
+    d1 = Driver(id="d1", name="D1", vehicle_type="bike", latitude=12.0, longitude=77.0)
+    dispatcher.update_driver(d1)
+
+    # Requesting cab, should ignore bike
+    assigned = dispatcher.find_driver("spotA", 12.0, 77.0, "cab")
+    assert assigned is None
+
+def test_dispatch_out_of_radius():
+    dispatcher = DriverDispatcher()
+    # Driver is 10km away
+    d1 = Driver(id="d1", name="D1", vehicle_type="cab", latitude=12.0 + 0.1, longitude=77.0)
+    dispatcher.update_driver(d1)
+
+    # Search radius 3km
+    assigned = dispatcher.find_driver("spotA", 12.0, 77.0, "cab", search_radius_m=3000)
+    assert assigned is None
+
+def test_dispatch_none_available():
+    dispatcher = DriverDispatcher()
+    # No drivers at all
+    assigned = dispatcher.find_driver("spotA", 12.0, 77.0, "cab")
+    assert assigned is None
+
+def test_dispatch_release():
+    dispatcher = DriverDispatcher()
+    d1 = Driver(id="d1", name="D1", vehicle_type="cab", latitude=12.0, longitude=77.0)
+    dispatcher.update_driver(d1)
+
+    # Assign d1
+    assigned = dispatcher.find_driver("spotA", 12.0, 77.0, "cab")
+    assert assigned.id == "d1"
+    assert assigned.is_busy is True
+
+    # Try to assign again
+    assigned2 = dispatcher.find_driver("spotA", 12.0, 77.0, "cab")
+    assert assigned2 is None
+
+    # Release d1
+    dispatcher.release_driver("d1")
+    assert d1.is_busy is False
+
+    # Assign again
+    assigned3 = dispatcher.find_driver("spotA", 12.0, 77.0, "cab")
+    assert assigned3.id == "d1"
+
+if __name__ == "__main__":
+    test_dispatch_fifo()
+    test_dispatch_skip_busy()
+    test_dispatch_nearest()
+    test_dispatch_wrong_vehicle()
+    test_dispatch_out_of_radius()
+    test_dispatch_none_available()
+    test_dispatch_release()
+    print("All tests passed!")
+
+
+def test_count_nearby_widens_range():
+    dispatcher = DriverDispatcher()
+    lat, lon = 18.5204, 73.8567
+    # one cab about 4.4 km away, one busy cab right here, one free bike right here
+    dispatcher.update_driver(Driver(id="far", name="F", vehicle_type="cab", latitude=lat + 0.04, longitude=lon))
+    dispatcher.update_driver(Driver(id="busy", name="B", vehicle_type="cab", is_busy=True, latitude=lat, longitude=lon))
+    dispatcher.update_driver(Driver(id="bike", name="K", vehicle_type="bike", latitude=lat, longitude=lon))
+
+    count, radius = dispatcher.count_nearby(lat, lon, "cab")
+    assert count == 1 and radius == 5000          # first found at the 5 km step
+    assert dispatcher.count_nearby(lat, lon, "bike") == (1, 2000)
+
+
+def test_count_nearby_none_within_10km():
+    dispatcher = DriverDispatcher()
+    lat, lon = 18.5204, 73.8567
+    dispatcher.update_driver(Driver(id="gone", name="G", vehicle_type="auto", latitude=lat + 0.2, longitude=lon))
+    assert dispatcher.count_nearby(lat, lon, "auto") == (0, 10000)
+    assert dispatcher.count_nearby(lat, lon, "cab") == (0, 10000)   # no cab drivers at all
+
+
+# ---- ratings steer the driver choice ----
+
+def _two_drivers(near_score, far_score):
+    dispatcher = DriverDispatcher()
+    lat, lon = 12.9716, 77.5946
+    # d_near ~ 220 m away, d_far ~ 1.1 km away
+    dispatcher.update_driver(Driver(id="d_near", name="Near", vehicle_type="cab", latitude=lat + 0.002, longitude=lon))
+    dispatcher.update_driver(Driver(id="d_far", name="Far", vehicle_type="cab", latitude=lat + 0.010, longitude=lon))
+    scores = {"d_near": near_score, "d_far": far_score}
+    dispatcher.rating_of = lambda driver_id: scores[driver_id]
+    return dispatcher, lat, lon
+
+
+def test_equal_ratings_pick_the_nearest_driver():
+    dispatcher, lat, lon = _two_drivers(3.0, 3.0)
+    assert dispatcher.find_driver("spot", lat, lon, "cab").id == "d_near"
+
+
+def test_much_better_rated_driver_beats_a_slightly_nearer_one():
+    dispatcher, lat, lon = _two_drivers(2.6, 4.8)
+    assert dispatcher.find_driver("spot", lat, lon, "cab").id == "d_far"
+
+
+def test_driver_with_a_very_low_rating_gets_no_rides():
+    dispatcher, lat, lon = _two_drivers(1.5, 1.9)
+    assert dispatcher.find_driver("spot", lat, lon, "cab") is None
+    assert dispatcher.count_nearby(lat, lon, "cab")[0] == 0

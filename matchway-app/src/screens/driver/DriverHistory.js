@@ -1,8 +1,8 @@
 // "History" tab for drivers: the trips he has completed (the fare is the total for the whole trip).
+// The list comes from the backend, where it is kept in our own Stack.
 import React from 'react';
 import HistoryScreen from '../ride/HistoryScreen';
-import { loadDriverHistory } from '../../history';
 
-export default function DriverHistory() {
-  return <HistoryScreen title="Trip history" load={loadDriverHistory} driver />;
+export default function DriverHistory({ userId }) {
+  return <HistoryScreen title="Trip history" userId={userId} driver />;
 }
